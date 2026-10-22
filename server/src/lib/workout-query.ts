@@ -112,3 +112,15 @@ export const logSetSchema = z.object({
   repsCompleted: z.number().int().min(0).max(100),
   weightKg: z.number().positive().max(500).nullable().optional(),
 });
+
+export const updateCooldownSchema = z
+  .object({
+    durationSeconds: z.number().int().min(20).max(90).optional(),
+    status: z.enum(['completed', 'skipped']).optional(),
+    replace: z.literal(true).optional(),
+  })
+  .refine(
+    (value) =>
+      value.durationSeconds !== undefined || value.status !== undefined || value.replace === true,
+    'Choose a duration, a status, or a replacement.',
+  );

@@ -33,6 +33,10 @@ describe('ExerciseDetailPage', () => {
               { slug: 'biceps', name: 'Biceps', role: 'secondary' },
             ],
             equipment: [{ slug: 'dumbbell', name: 'Dumbbell', category: 'free_weight' }],
+            navigation: {
+              previous: { slug: 'push-up', name: 'Push-up' },
+              next: { slug: 'incline-row', name: 'Incline row' },
+            },
             progression: [
               {
                 experience: 'beginner',
@@ -75,6 +79,19 @@ describe('ExerciseDetailPage', () => {
     expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute(
       'href',
       '/exercises?muscle=back',
+    );
+    expect(screen.getByRole('button', { name: 'Back' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Previous exercise: Push-up' })).toHaveAttribute(
+      'href',
+      '/exercises/push-up',
+    );
+    expect(screen.getByRole('link', { name: 'Next exercise: Incline row' })).toHaveAttribute(
+      'href',
+      '/exercises/incline-row',
+    );
+    expect(screen.getByRole('link', { name: 'Train Back' })).toHaveAttribute(
+      'href',
+      '/workouts/new?muscle=back',
     );
     expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
     expect(screen.getByText('Support one hand on a bench.')).toBeInTheDocument();

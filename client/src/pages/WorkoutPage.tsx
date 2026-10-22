@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { apiRequest, useApi } from '../api';
 import {
   EmptyState,
@@ -8,6 +8,7 @@ import {
   PageIntro,
 } from '../components/Status';
 import { GuidedSession } from '../components/GuidedSession';
+import { PageNav } from '../components/PageNav';
 import { WorkoutSummary } from '../components/WorkoutSummary';
 import { labelEquipmentCategory, labelExperience, labelGoal } from '../labels';
 import { rememberStarted } from '../storage';
@@ -121,6 +122,13 @@ export function WorkoutPage() {
 
   return (
     <>
+      <PageNav
+        fallbackTo="/"
+        links={[
+          { to: `/exercises?muscle=${workout.muscle.slug}`, label: `${workout.muscle.name} exercises` },
+          { to: '/workouts/new', label: 'Build another' },
+        ]}
+      />
       <PageIntro
         eyebrow={
           local.status === 'completed'
@@ -189,12 +197,6 @@ export function WorkoutPage() {
                 </button>
               </>
             )}
-            <Link
-              to="/workouts/new"
-              className="text-sm font-semibold text-accent"
-            >
-              Build another
-            </Link>
             {actionError ? (
               <p role="alert" className="text-sm text-danger">
                 {actionError}

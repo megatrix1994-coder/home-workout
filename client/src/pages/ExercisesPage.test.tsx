@@ -89,9 +89,9 @@ describe('ExercisesPage', () => {
     expect(screen.getByText(/Chest press machine \(Machine\)/)).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('Equipment'), 'machine');
-    expect(await screen.findByText('1–1 of 1 exercise')).toBeInTheDocument();
+    expect(await screen.findAllByText('1–1 of 1 exercise')).toHaveLength(2);
     await userEvent.selectOptions(screen.getByLabelText('Goal'), 'strength');
-    expect(await screen.findByText('1–1 of 1 exercise')).toBeInTheDocument();
+    expect(await screen.findAllByText('1–1 of 1 exercise')).toHaveLength(2);
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('goal=strength'),
       expect.anything(),
@@ -186,10 +186,10 @@ describe('ExercisesPage', () => {
     );
 
     expect(await screen.findByRole('link', { name: /Chest press/ })).toBeInTheDocument();
-    expect(screen.getByText('1–1 of 101 exercises')).toBeInTheDocument();
+    expect(screen.getAllByText('1–1 of 101 exercises')).toHaveLength(2);
     expect(screen.getByText(/Beginner · Strength/)).toBeInTheDocument();
     expect(screen.getByText(/Middle chest/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await userEvent.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
     expect(await screen.findByRole('link', { name: /Dumbbell row/ })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('offset=100'),

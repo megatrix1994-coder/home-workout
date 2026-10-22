@@ -119,6 +119,34 @@ exercisesRouter.get(
       throw new HttpError(404, 'NOT_FOUND', 'Exercise not found.');
     }
 
-    res.json({ data: serializeExercise(exercise, true) });
+    const [previous, next] = await Promise.all([
+      prisma.exercise.findFirst({
+        where: {
+          OR: [
+            { name: { lt: exercise.name } },
+            { name: exercise.name, slug: { lt: exercise.slug } },
+          ],
+        },
+        orderBy: [{ name: 'desc' }, { slug: 'desc' }],
+        select: { slug: true, name: true },
+      }),
+      prisma.exercise.findFirst({
+        where: {
+          OR: [
+            { name: { gt: exercise.name } },
+            { name: exercise.name, slug: { gt: exercise.slug } },
+          ],
+        },
+        orderBy: [{ name: 'asc' }, { slug: 'asc' }],
+        select: { slug: true, name: true },
+      }),
+    ]);
+
+    res.json({
+      data: {
+        ...serializeExercise(exercise, true),
+        navigation: { previous, next },
+      },
+    });
   }),
 );

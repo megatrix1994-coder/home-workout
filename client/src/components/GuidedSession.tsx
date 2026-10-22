@@ -130,6 +130,14 @@ export function GuidedSession({
   const round = current?.round;
   const setNumber = current?.setNumber;
   const warmupDuration = workout.warmups[warmupIndex]?.durationSeconds ?? 0;
+  const pendingCooldown =
+    workout.status === 'completed'
+      ? (workout.cooldowns ?? []).find((item) => item.status === 'pending') ?? null
+      : null;
+  const cooldownId = pendingCooldown?.id;
+  const cooldownStretchId = pendingCooldown?.stretch.id;
+  const cooldownDuration = pendingCooldown?.durationSeconds ?? 0;
+  const [cooldownSeconds, setCooldownSeconds] = useState(cooldownDuration);
 
   useEffect(() => {
     if (pastWarmup) {
@@ -198,6 +206,114 @@ export function GuidedSession({
     return () => window.clearTimeout(timer);
   }, [restSeconds, workout.id]);
 
+  useEffect(() => {
+    setCooldownSeconds(cooldownDuration);
+  }, [cooldownId, cooldownStretchId, cooldownDuration]);
+
+  useEffect(() => {
+    if (!cooldownId || cooldownSeconds <= 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((value) => (value <= 0 ? 0 : value - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [cooldownId, cooldownSeconds]);
+
+  async function updateCooldown(body: {
+    durationSeconds?: number;
+    status?: 'completed' | 'skipped';
+    replace?: true;
+  }) {
+    if (!pendingCooldown) {
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const saved = await apiRequest<ItemResponse<WorkoutPlan>>(
+        `/api/v1/workouts/${workout.id}/cooldowns/${pendingCooldown.id}`,
+        { method: 'PATCH', body: JSON.stringify(body) },
+      );
+      onChange(saved.data);
+    } catch (failure: unknown) {
+      setError(failure instanceof Error ? failure.message : 'Could not update this stretch.');
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (pendingCooldown) {
+    const easier = pendingCooldown.stretch.slug.endsWith('-gentle');
+    return (
+      <section className="rounded-2xl border border-line bg-card p-5">
+        <p className="text-sm font-semibold text-accent">Cooldown · {pendingCooldown.muscle.name}</p>
+        <h2 className="mt-2 font-display text-4xl font-semibold">{pendingCooldown.stretch.name}</h2>
+        <p className="mt-3 font-display text-5xl font-semibold">{formatClock(cooldownSeconds)}</p>
+        <Demonstration
+          instructions={pendingCooldown.stretch.instructions}
+          animations={pendingCooldown.stretch.animations}
+        />
+        <p className="mt-4 text-sm text-muted">Stop if the stretch hurts.</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={pending || pendingCooldown.durationSeconds <= 20}
+            onClick={() =>
+              void updateCooldown({
+                durationSeconds: Math.max(20, pendingCooldown.durationSeconds - 10),
+              })
+            }
+            className="rounded-full border border-line bg-paper px-5 py-2.5 font-semibold disabled:opacity-50"
+          >
+            Shorter hold
+          </button>
+          <button
+            type="button"
+            disabled={pending || pendingCooldown.durationSeconds >= 90}
+            onClick={() =>
+              void updateCooldown({
+                durationSeconds: Math.min(90, pendingCooldown.durationSeconds + 10),
+              })
+            }
+            className="rounded-full border border-line bg-paper px-5 py-2.5 font-semibold disabled:opacity-50"
+          >
+            Longer hold
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void updateCooldown({ replace: true })}
+            className="rounded-full border border-line bg-paper px-5 py-2.5 font-semibold disabled:opacity-50"
+          >
+            {easier ? 'Use an easier stretch' : 'Use the first stretch'}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void updateCooldown({ status: 'skipped' })}
+            className="rounded-full border border-line bg-paper px-5 py-2.5 font-semibold disabled:opacity-50"
+          >
+            Skip
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => void updateCooldown({ status: 'completed' })}
+            className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-50"
+          >
+            Done
+          </button>
+        </div>
+        {error ? (
+          <p role="alert" className="mt-4 text-sm text-danger">
+            {error}
+          </p>
+        ) : null}
+      </section>
+    );
+  }
+
   if (workout.status === 'completed' || !current || !exercise) {
     const logs = workout.exercises.flatMap((item) => item.setLogs ?? []);
     return (
@@ -219,6 +335,11 @@ export function GuidedSession({
         <p className="mt-3 text-sm text-muted">
           Stop if a movement caused pain. This session is general fitness education, not a medical assessment.
         </p>
+        {workout.status === 'completed' ? (
+          <p className="mt-3 text-sm text-muted">
+            Stretching is one part of recovery. It does not prevent injury or remove soreness.
+          </p>
+        ) : null}
       </section>
     );
   }

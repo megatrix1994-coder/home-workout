@@ -44,6 +44,7 @@ function plan(overrides: Partial<WorkoutPlan> = {}): WorkoutPlan {
     rounds: 1,
     muscle: { id: 'm-1', slug: 'chest', name: 'Chest' },
     warmups: [],
+    cooldowns: [],
     exercises: [exercise],
     ...overrides,
   };
@@ -363,5 +364,70 @@ describe('GuidedSession', () => {
     expect(screen.getByRole('heading', { name: 'Dumbbell row' }).closest('section')).not.toHaveTextContent(
       'Next time use 9 kg.',
     );
+  });
+
+  it('walks a cooldown stretch to done and shows the recovery line', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const stretch = {
+      id: 'stretch-chest',
+      slug: 'cooldown-chest-gentle',
+      name: 'Doorway chest stretch',
+      instructions:
+        'Setup: Stand in a doorway.\n1. Rest one forearm on the frame.\nBreathing: Breathe slowly.\nCommon mistakes: Do not force the shoulder.',
+      durationSeconds: 30,
+      animations: [
+        {
+          id: 'clip-chest',
+          format: 'video' as const,
+          assetUrl: '/demonstrations/cooldown-chest-gentle.mp4',
+        },
+      ],
+    };
+    const cooldown = {
+      id: 'cool-1',
+      order: 0,
+      durationSeconds: 30,
+      status: 'pending' as const,
+      muscle: { id: 'm-1', slug: 'chest', name: 'Chest' },
+      stretch,
+    };
+    const finished = plan({
+      status: 'completed',
+      completedAt: '2026-10-22T00:20:00.000Z',
+      cooldowns: [{ ...cooldown, status: 'completed' }],
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: finished }),
+      }),
+    );
+
+    const view = render(
+      <GuidedSession
+        workout={plan({
+          status: 'completed',
+          completedAt: '2026-10-22T00:20:00.000Z',
+          cooldowns: [cooldown],
+        })}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByText('Cooldown · Chest')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Doorway chest stretch' })).toBeInTheDocument();
+    expect(screen.getByText('0:30')).toBeInTheDocument();
+    expect(screen.getByText('Original illustration of the movement. This is not filmed footage.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Done' }));
+    const saved = onChange.mock.calls.at(-1)?.[0] as WorkoutPlan;
+    view.rerender(<GuidedSession workout={saved} onChange={onChange} />);
+    expect(screen.getByRole('heading', { name: 'Workout complete' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Stretching is one part of recovery. It does not prevent injury or remove soreness.',
+      ),
+    ).toBeInTheDocument();
   });
 });

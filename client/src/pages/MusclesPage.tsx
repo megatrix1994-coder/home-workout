@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useApi } from '../api';
+import { PageNav } from '../components/PageNav';
 import { EmptyState, ErrorState, LoadingState, PageIntro } from '../components/Status';
 import type { ListResponse, MuscleGroup } from '../types';
 
@@ -10,6 +11,13 @@ export function MusclesPage() {
 
   return (
     <>
+      <PageNav
+        fallbackTo="/"
+        links={[
+          { to: '/exercises', label: 'All exercises' },
+          { to: '/workouts/new', label: 'Build a workout' },
+        ]}
+      />
       <PageIntro eyebrow="Library" title="Muscle groups">
         <p>Start with the area you want to train. Each group opens the exercises that work it.</p>
       </PageIntro>

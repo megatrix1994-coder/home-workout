@@ -7,6 +7,7 @@ import {
   LoadingState,
   PageIntro,
 } from '../components/Status';
+import { PageNav } from '../components/PageNav';
 import { WorkoutSummary } from '../components/WorkoutSummary';
 import { rememberDraft } from '../storage';
 import type {
@@ -190,6 +191,13 @@ export function WorkoutBuilderPage() {
 
   return (
     <>
+      <PageNav
+        fallbackTo="/"
+        links={[
+          { to: '/muscles', label: 'Muscle groups' },
+          { to: '/exercises', label: 'All exercises' },
+        ]}
+      />
       <PageIntro eyebrow="Workout builder" title="Build a workout">
         <p>
           Choose a muscle, a goal, your experience, and the equipment you have.

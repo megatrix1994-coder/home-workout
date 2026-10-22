@@ -3,8 +3,9 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { exercises } from '../catalogue.js';
+import { cooldowns } from '../cooldowns.js';
 import { FRAME_COUNT, FRAME_RATE, paintFrame } from './draw.js';
-import { poseRecipe } from './pose.js';
+import { poseRecipe, stretchPose, type PoseRecipe } from './pose.js';
 
 const require = createRequire(path.resolve('package.json'));
 export const demonstrationDir = path.resolve(process.cwd(), '../client/public/demonstrations');
@@ -39,17 +40,15 @@ function run(command: string, args: string[]) {
   });
 }
 
-export async function renderExercise(slug: string, outputDir = demonstrationDir) {
-  const exercise = exercises.find((item) => item.slug === slug);
-  if (!exercise) {
-    throw new Error(`Unknown exercise: ${slug}`);
-  }
+async function renderClip(slug: string, recipe: PoseRecipe, outputDir: string) {
   const ffmpegPath = ffmpegBinary();
-  const recipe = poseRecipe(exercise);
   const frames = path.join(outputDir, '.frames', slug);
   await mkdir(frames, { recursive: true });
   for (let frame = 0; frame < FRAME_COUNT; frame += 1) {
-    await writeFile(path.join(frames, `frame-${String(frame).padStart(2, '0')}.png`), paintFrame(recipe, frame));
+    await writeFile(
+      path.join(frames, `frame-${String(frame).padStart(2, '0')}.png`),
+      paintFrame(recipe, frame),
+    );
   }
   const output = path.join(outputDir, `${slug}.mp4`);
   await run(ffmpegPath, [
@@ -73,7 +72,26 @@ export async function renderExercise(slug: string, outputDir = demonstrationDir)
   return output;
 }
 
-export async function renderDemonstrations(slugs = exercises.map((exercise) => exercise.slug)) {
+export async function renderExercise(slug: string, outputDir = demonstrationDir) {
+  const exercise = exercises.find((item) => item.slug === slug);
+  if (!exercise) {
+    throw new Error(`Unknown exercise: ${slug}`);
+  }
+  return renderClip(slug, poseRecipe(exercise), outputDir);
+}
+
+export async function renderCooldown(slug: string, outputDir = demonstrationDir) {
+  const stretch = cooldowns.find((item) => item.slug === slug);
+  if (!stretch) {
+    throw new Error(`Unknown cooldown: ${slug}`);
+  }
+  return renderClip(slug, stretchPose(stretch), outputDir);
+}
+
+export async function renderDemonstrations(
+  slugs = exercises.map((exercise) => exercise.slug),
+  render: (slug: string) => Promise<string> = renderExercise,
+) {
   await mkdir(demonstrationDir, { recursive: true });
   let cursor = 0;
   let finished = 0;
@@ -85,7 +103,7 @@ export async function renderDemonstrations(slugs = exercises.map((exercise) => e
       if (!slug) {
         continue;
       }
-      await renderExercise(slug);
+      await render(slug);
       finished += 1;
       if (finished % 25 === 0 || finished === slugs.length) {
         console.log(`Rendered ${finished} of ${slugs.length}`);
@@ -99,7 +117,11 @@ export async function renderDemonstrations(slugs = exercises.map((exercise) => e
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
 if (entry.endsWith(`${path.sep}render.ts`) || entry.endsWith(`${path.sep}render.js`)) {
   const only = process.argv[2];
-  renderDemonstrations(only ? [only] : undefined).catch((error: unknown) => {
+  const job =
+    only === '--cooldowns'
+      ? renderDemonstrations(cooldowns.map((stretch) => stretch.slug), renderCooldown)
+      : renderDemonstrations(only ? [only] : undefined, renderExercise);
+  job.catch((error: unknown) => {
     console.error(error);
     process.exit(1);
   });

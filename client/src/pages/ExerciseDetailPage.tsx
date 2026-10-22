@@ -9,6 +9,7 @@ import {
   labelRole,
 } from '../labels';
 import { Demonstration } from '../components/Demonstration';
+import { PageNav } from '../components/PageNav';
 import { ErrorState, LoadingState } from '../components/Status';
 import type { ExerciseDetail, ItemResponse } from '../types';
 
@@ -31,12 +32,42 @@ export function ExerciseDetailPage() {
   }
 
   const exercise = state.data.data;
+  const primary = exercise.muscles.find((muscle) => muscle.role === 'primary') ?? exercise.muscles[0];
+  const previous = exercise.navigation?.previous;
+  const next = exercise.navigation?.next;
 
   return (
     <article>
-      <Link to="/exercises" className="text-sm font-semibold text-accent">
-        All exercises
-      </Link>
+      <PageNav
+        fallbackTo="/exercises"
+        previous={
+          previous
+            ? {
+                to: `/exercises/${previous.slug}`,
+                label: previous.name,
+                name: `Previous exercise: ${previous.name}`,
+              }
+            : null
+        }
+        next={
+          next
+            ? {
+                to: `/exercises/${next.slug}`,
+                label: next.name,
+                name: `Next exercise: ${next.name}`,
+              }
+            : null
+        }
+        links={[
+          { to: '/exercises', label: 'All exercises' },
+          ...(primary
+            ? [
+                { to: `/exercises?muscle=${primary.slug}`, label: `${primary.name} exercises` },
+                { to: `/workouts/new?muscle=${primary.slug}`, label: `Train ${primary.name}` },
+              ]
+            : []),
+        ]}
+      />
       <p className="mt-4 text-sm font-semibold uppercase tracking-[0.16em] text-accent">
         {labelDifficulty(exercise.difficulty)}
         {exercise.goals[0] ? ` · ${labelGoal(exercise.goals[0])}` : ''} ·{' '}

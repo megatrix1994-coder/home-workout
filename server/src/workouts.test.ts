@@ -12,6 +12,9 @@ const {
   deleteWorkoutExercises,
   createWorkoutExercises,
   upsertSetLog,
+  findFirstStretch,
+  createCooldown,
+  updateCooldown,
   transaction,
 } = vi.hoisted(() => ({
   findUniqueMuscle: vi.fn(),
@@ -24,6 +27,9 @@ const {
   deleteWorkoutExercises: vi.fn(),
   createWorkoutExercises: vi.fn(),
   upsertSetLog: vi.fn(),
+  findFirstStretch: vi.fn(),
+  createCooldown: vi.fn(),
+  updateCooldown: vi.fn(),
   transaction: vi.fn(),
 }));
 
@@ -32,7 +38,8 @@ vi.mock('./db', () => ({
     $transaction: transaction,
     muscleGroup: { findUnique: findUniqueMuscle },
     exercise: { findMany: findManyExercises },
-    stretch: { findMany: findManyStretches },
+    stretch: { findMany: findManyStretches, findFirst: findFirstStretch },
+    workoutCooldown: { createMany: createCooldown, update: updateCooldown },
     workoutPlan: {
       findUnique: findUniqueWorkout,
       findMany: findManyWorkouts,
@@ -131,7 +138,25 @@ type StoredWorkout = {
   rounds: number;
   status: string;
   startedAt: Date | null;
+  completedAt?: Date | null;
   muscle: typeof chest;
+  cooldowns?: Array<{
+    id: string;
+    order: number;
+    durationSeconds: number;
+    status: string;
+    muscleId: string;
+    stretchId: string;
+    muscle: { id: string; slug: string; name: string };
+    stretch: {
+      id: string;
+      slug: string;
+      name: string;
+      instructions: string;
+      durationSeconds: number;
+      animations: unknown[];
+    };
+  }>;
   warmups: Array<{
     id: string;
     order: number;
@@ -203,6 +228,9 @@ describe('workout API', () => {
       },
     );
     findManyStretches.mockResolvedValue([]);
+    findFirstStretch.mockResolvedValue(null);
+    createCooldown.mockResolvedValue({ count: 0 });
+    updateCooldown.mockResolvedValue({});
     findUniqueWorkout.mockImplementation(
       async ({ where }: { where: { id: string } }) =>
         current && where.id === current.id ? current : null,
@@ -749,5 +777,235 @@ describe('workout API', () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(createWorkout).not.toHaveBeenCalled();
+  });
+
+  it('creates one gentle cooldown stretch per trained muscle without duplicates', async () => {
+    const press = {
+      ...pushUp,
+      muscles: [
+        { role: 'primary', muscle: { slug: 'chest', name: 'Chest', sortOrder: 1 } },
+        { role: 'secondary', muscle: { slug: 'chest', name: 'Chest', sortOrder: 1 } },
+        { role: 'secondary', muscle: { slug: 'shoulders', name: 'Shoulders', sortOrder: 3 } },
+        { role: 'secondary', muscle: { slug: 'triceps', name: 'Triceps', sortOrder: 5 } },
+      ],
+    };
+    current = {
+      id: 'workout-1',
+      muscleId: chest.id,
+      goal: 'strength',
+      experience: 'beginner',
+      equipmentCategories: ['bodyweight'],
+      rationale: 'A bodyweight chest workout.',
+      estimatedMinutes: 20,
+      rounds: 1,
+      status: 'started',
+      startedAt: new Date(),
+      muscle: chest,
+      warmups: [],
+      exercises: [
+        {
+          id: 'line-0',
+          order: 0,
+          sets: 1,
+          reps: '5',
+          restSeconds: 60,
+          reason: 'Push-up matches bodyweight.',
+          exerciseId: press.id,
+          exercise: press,
+          setLogs: [],
+        },
+      ],
+    };
+    findManyStretches.mockResolvedValue([
+      {
+        id: 's-triceps',
+        slug: 'cooldown-triceps-gentle',
+        durationSeconds: 30,
+        muscles: [{ muscleId: 'm-triceps' }],
+      },
+      {
+        id: 's-chest',
+        slug: 'cooldown-chest-gentle',
+        durationSeconds: 30,
+        muscles: [{ muscleId: 'm-chest' }],
+      },
+      {
+        id: 's-shoulders',
+        slug: 'cooldown-shoulders-gentle',
+        durationSeconds: 30,
+        muscles: [{ muscleId: 'm-shoulders' }],
+      },
+    ]);
+    createCooldown.mockImplementation(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+      current = {
+        ...current!,
+        cooldowns: data.map((row, index) => ({
+          id: `cool-${index}`,
+          order: row.order,
+          durationSeconds: row.durationSeconds,
+          status: row.status,
+          muscleId: row.muscleId,
+          stretchId: row.stretchId,
+          muscle: { id: row.muscleId, slug: String(row.muscleId), name: String(row.muscleId) },
+          stretch: {
+            id: row.stretchId,
+            slug: String(row.stretchId),
+            name: String(row.stretchId),
+            instructions: 'Setup: Hold.\n1. Relax.\nBreathing: Easy.\nCommon mistakes: Do not bounce.',
+            durationSeconds: row.durationSeconds,
+            animations: [],
+          },
+        })),
+      };
+      return { count: data.length };
+    });
+    upsertSetLog.mockImplementation(async () => {
+      const log = { id: 'log-1', round: 1, setNumber: 1, repsCompleted: 5, weightKg: null };
+      current = {
+        ...current!,
+        exercises: [{ ...current!.exercises[0]!, setLogs: [log] }],
+      };
+      return log;
+    });
+
+    const response = await request(app).post('/api/v1/workouts/workout-1/sets').send({
+      workoutExerciseId: 'line-0',
+      round: 1,
+      setNumber: 1,
+      repsCompleted: 5,
+    });
+
+    expect(response.status).toBe(200);
+    expect(createCooldown).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          muscleId: 'm-chest',
+          stretchId: 's-chest',
+          order: 0,
+          durationSeconds: 30,
+          status: 'pending',
+        }),
+        expect.objectContaining({ muscleId: 'm-shoulders', stretchId: 's-shoulders', order: 1 }),
+        expect.objectContaining({ muscleId: 'm-triceps', stretchId: 's-triceps', order: 2 }),
+      ],
+    });
+    expect(response.body.data.cooldowns).toHaveLength(3);
+  });
+
+  it('replaces, skips, and limits a cooldown hold', async () => {
+    const gentle = {
+      id: 'cool-1',
+      order: 0,
+      durationSeconds: 30,
+      status: 'pending',
+      muscleId: 'm-chest',
+      stretchId: 's-gentle',
+      muscle: { id: 'm-chest', slug: 'chest', name: 'Chest' },
+      stretch: {
+        id: 's-gentle',
+        slug: 'cooldown-chest-gentle',
+        name: 'Doorway chest stretch',
+        instructions: 'Setup: Hold.\n1. Relax.\nBreathing: Easy.\nCommon mistakes: Do not bounce.',
+        durationSeconds: 30,
+        animations: [],
+      },
+    };
+    current = {
+      id: 'workout-1',
+      muscleId: chest.id,
+      goal: 'strength',
+      experience: 'beginner',
+      equipmentCategories: ['bodyweight'],
+      rationale: 'A bodyweight chest workout.',
+      estimatedMinutes: 20,
+      rounds: 1,
+      status: 'completed',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      muscle: chest,
+      warmups: [],
+      cooldowns: [gentle],
+      exercises: [
+        {
+          id: 'line-0',
+          order: 0,
+          sets: 1,
+          reps: '5',
+          restSeconds: 60,
+          reason: 'Push-up matches bodyweight.',
+          exerciseId: pushUp.id,
+          exercise: pushUp,
+          setLogs: [],
+        },
+      ],
+    };
+    updateCooldown.mockImplementation(
+      async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { stretchId?: string; durationSeconds?: number; status?: string };
+      }) => {
+        current = {
+          ...current!,
+          cooldowns: (current!.cooldowns ?? []).map((item) => {
+            if (item.id !== where.id) {
+              return item;
+            }
+            const next = { ...item, ...data };
+            if (data.stretchId === 's-easier') {
+              next.stretch = {
+                ...item.stretch,
+                id: 's-easier',
+                slug: 'cooldown-chest-easier',
+                name: 'Seated chest opener',
+              };
+              next.stretchId = 's-easier';
+            }
+            return next;
+          }),
+        };
+        return {};
+      },
+    );
+    findFirstStretch.mockResolvedValue({
+      id: 's-easier',
+      slug: 'cooldown-chest-easier',
+      name: 'Seated chest opener',
+    });
+
+    const tooShort = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ durationSeconds: 19 });
+    expect(tooShort.status).toBe(400);
+    const tooLong = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ durationSeconds: 91 });
+    expect(tooLong.status).toBe(400);
+    expect(updateCooldown).not.toHaveBeenCalled();
+
+    const longer = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ durationSeconds: 40 });
+    expect(longer.status).toBe(200);
+    expect(longer.body.data.cooldowns[0].durationSeconds).toBe(40);
+
+    const replaced = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ replace: true });
+    expect(replaced.status).toBe(200);
+    expect(replaced.body.data.cooldowns[0].stretch.slug).toBe('cooldown-chest-easier');
+
+    const skipped = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ status: 'skipped' });
+    expect(skipped.status).toBe(200);
+    expect(skipped.body.data.cooldowns[0].status).toBe('skipped');
+
+    const again = await request(app)
+      .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
+      .send({ status: 'completed' });
+    expect(again.status).toBe(400);
   });
 });

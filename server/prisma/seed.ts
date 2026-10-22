@@ -4,6 +4,7 @@ import {
   type MuscleRole,
 } from '@prisma/client';
 import { equipment, exercises, muscleGroups } from '../src/catalogue';
+import { cooldowns } from '../src/cooldowns';
 import { warmups } from '../src/warmups';
 
 const prisma = new PrismaClient();
@@ -116,8 +117,12 @@ async function main() {
     });
   }
 
+  const stretchSlugs = [
+    ...warmups.map((stretch) => stretch.slug),
+    ...cooldowns.map((stretch) => stretch.slug),
+  ];
   await prisma.stretch.deleteMany({
-    where: { slug: { notIn: warmups.map((stretch) => stretch.slug) } },
+    where: { slug: { notIn: stretchSlugs } },
   });
 
   for (const stretch of warmups) {
@@ -147,6 +152,44 @@ async function main() {
         }
         return { stretchId: saved.id, muscleId: row.id };
       }),
+    });
+  }
+
+  for (const stretch of cooldowns) {
+    const saved = await prisma.stretch.upsert({
+      where: { slug: stretch.slug },
+      update: {
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'cooldown',
+      },
+      create: {
+        slug: stretch.slug,
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'cooldown',
+      },
+    });
+
+    const muscle = muscleBySlug.get(stretch.muscle);
+    if (!muscle) {
+      throw new Error(`Unknown muscle slug: ${stretch.muscle}`);
+    }
+    await prisma.stretchMuscle.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.stretchMuscle.createMany({
+      data: [{ stretchId: saved.id, muscleId: muscle.id }],
+    });
+
+    await prisma.animationAsset.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.animationAsset.create({
+      data: {
+        stretchId: saved.id,
+        assetUrl: `/demonstrations/${stretch.slug}.mp4`,
+        format: 'video',
+        reviewStatus: 'approved',
+      },
     });
   }
 }

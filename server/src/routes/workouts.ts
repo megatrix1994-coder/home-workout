@@ -23,10 +23,13 @@ import {
   type TrainingGoal,
 } from '../lib/recommend.js';
 import { exerciseProgression, type LoggedSet } from '../lib/progression.js';
+import { gentleSlug } from '../cooldowns.js';
+import { trainedMuscleSlugs } from '../lib/cooldown.js';
 import {
   createWorkoutSchema,
   logSetSchema,
   recommendationQuerySchema,
+  updateCooldownSchema,
   updateWorkoutSchema,
 } from '../lib/workout-query.js';
 import { asyncHandler } from '../middleware/error-handler.js';
@@ -52,6 +55,19 @@ const workoutInclude = {
   warmups: {
     orderBy: { order: 'asc' as const },
     include: { stretch: true },
+  },
+  cooldowns: {
+    orderBy: { order: 'asc' as const },
+    include: {
+      muscle: true,
+      stretch: {
+        include: {
+          animations: {
+            select: { id: true, format: true, assetUrl: true, reviewStatus: true },
+          },
+        },
+      },
+    },
   },
 };
 
@@ -99,6 +115,24 @@ type WorkoutWarmupRecord = {
   };
 };
 
+type WorkoutCooldownRecord = {
+  id: string;
+  order: number;
+  durationSeconds: number;
+  status: 'pending' | 'completed' | 'skipped';
+  muscleId: string;
+  stretchId: string;
+  muscle: { id: string; slug: string; name: string };
+  stretch: {
+    id: string;
+    slug: string;
+    name: string;
+    instructions: string;
+    durationSeconds: number;
+    animations?: ExerciseRecord['animations'];
+  };
+};
+
 type WorkoutRecord = {
   id: string;
   status: 'draft' | 'started' | 'completed';
@@ -111,9 +145,10 @@ type WorkoutRecord = {
   estimatedMinutes: number;
   rounds: number;
   muscleId: string;
-  muscle: { id: string; slug: string; name: string };
+  muscle: { id: string; slug: string; name: string; sortOrder?: number };
   exercises: WorkoutExerciseRecord[];
   warmups: WorkoutWarmupRecord[];
+  cooldowns?: WorkoutCooldownRecord[];
 };
 
 function toCandidate(exercise: ExerciseRecord): Candidate {
@@ -282,6 +317,23 @@ async function serializeWorkout(workout: WorkoutRecord) {
         order: warmup.order,
         durationSeconds: warmup.durationSeconds,
         stretch: presentWarmup(warmup.stretch),
+      })),
+    cooldowns: [...(workout.cooldowns ?? [])]
+      .sort((left, right) => left.order - right.order)
+      .map((cooldown) => ({
+        id: cooldown.id,
+        order: cooldown.order,
+        durationSeconds: cooldown.durationSeconds,
+        status: cooldown.status,
+        muscle: {
+          id: cooldown.muscle.id,
+          slug: cooldown.muscle.slug,
+          name: cooldown.muscle.name,
+        },
+        stretch: {
+          ...presentWarmup(cooldown.stretch),
+          animations: approvedAnimations(cooldown.stretch.animations),
+        },
       })),
     exercises: exercises.map((exercise) => ({
       id: exercise.id,
@@ -706,6 +758,7 @@ workoutsRouter.post(
     }
 
     if (loggedSetCount(saved) >= expectedSetCount(saved)) {
+      await createCooldowns(saved);
       const completed = await prisma.workoutPlan.update({
         where: { id: saved.id },
         data: { status: 'completed', completedAt: new Date() },
@@ -718,3 +771,103 @@ workoutsRouter.post(
     res.json({ data: await serializeWorkout(saved) });
   }),
 );
+
+workoutsRouter.patch(
+  '/:id/cooldowns/:cooldownId',
+  asyncHandler(async (req, res) => {
+    const body = updateCooldownSchema.parse(req.body);
+    const existing = await prisma.workoutPlan.findUnique({
+      where: { id: routeId(req.params.id) },
+      include: workoutInclude,
+    });
+    if (!existing) {
+      throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
+    }
+    if (existing.status !== 'completed') {
+      throw new HttpError(
+        400,
+        'VALIDATION_ERROR',
+        'Finish the workout before changing the cooldown.',
+      );
+    }
+    const cooldown = (existing.cooldowns ?? []).find(
+      (item) => item.id === routeId(req.params.cooldownId),
+    );
+    if (!cooldown) {
+      throw new HttpError(404, 'NOT_FOUND', 'That stretch is not in this cooldown.');
+    }
+    if (cooldown.status !== 'pending') {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'That stretch is already finished.');
+    }
+
+    let stretchId = cooldown.stretchId;
+    if (body.replace) {
+      const alternate = await prisma.stretch.findFirst({
+        where: {
+          purpose: 'cooldown',
+          id: { not: cooldown.stretchId },
+          muscles: { some: { muscleId: cooldown.muscleId } },
+        },
+      });
+      if (!alternate) {
+        throw new HttpError(404, 'NOT_FOUND', 'This muscle has no other stretch.');
+      }
+      stretchId = alternate.id;
+    }
+
+    await prisma.workoutCooldown.update({
+      where: { id: cooldown.id },
+      data: {
+        stretchId,
+        durationSeconds: body.durationSeconds ?? cooldown.durationSeconds,
+        status: body.status ?? cooldown.status,
+      },
+    });
+    const saved = await prisma.workoutPlan.findUnique({
+      where: { id: existing.id },
+      include: workoutInclude,
+    });
+    if (!saved) {
+      throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
+    }
+    res.json({ data: await serializeWorkout(saved) });
+  }),
+);
+
+async function createCooldowns(workout: WorkoutRecord) {
+  const slugs = trainedMuscleSlugs(
+    { slug: workout.muscle.slug, sortOrder: workout.muscle.sortOrder ?? 0 },
+    workout.exercises.flatMap((line) =>
+      line.exercise.muscles.map((link) => ({
+        slug: link.muscle.slug,
+        sortOrder: link.muscle.sortOrder,
+      })),
+    ),
+  );
+  const stretches = await prisma.stretch.findMany({
+    where: { purpose: 'cooldown', slug: { in: slugs.map((slug) => gentleSlug(slug)) } },
+    include: { muscles: true },
+  });
+  const bySlug = new Map(stretches.map((stretch) => [stretch.slug, stretch]));
+  const data = slugs.flatMap((slug, index) => {
+    const stretch = bySlug.get(gentleSlug(slug));
+    const muscleId = stretch?.muscles[0]?.muscleId;
+    if (!stretch || !muscleId) {
+      return [];
+    }
+    return [
+      {
+        workoutId: workout.id,
+        stretchId: stretch.id,
+        muscleId,
+        order: index,
+        durationSeconds: stretch.durationSeconds,
+        status: 'pending' as const,
+      },
+    ];
+  });
+  if (data.length === 0) {
+    return;
+  }
+  await prisma.workoutCooldown.createMany({ data });
+}

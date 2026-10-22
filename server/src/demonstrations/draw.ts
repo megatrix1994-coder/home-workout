@@ -1,18 +1,21 @@
 import type { PoseRecipe } from './pose.js';
 import { encodePng } from './png.js';
 
-export const FRAME_WIDTH = 320;
-export const FRAME_HEIGHT = 240;
+const SCALE = 1.5;
+export const FRAME_WIDTH = 480;
+export const FRAME_HEIGHT = 360;
 export const FRAME_COUNT = 20;
 export const FRAME_RATE = 10;
 
 const PAPER: Rgb = [244, 239, 230];
 const INK: Rgb = [42, 37, 32];
-function accent(tint: number): Rgb {
-  return [170 + tint, 65, 12];
+function accent(tint: number, phase: number): Rgb {
+  return [158 + ((tint + phase) % 48), 54 + (phase % 11), 8];
 }
 const PROP: Rgb = [90, 98, 104];
+const FAR: Rgb = [132, 124, 116];
 const FLOOR: Rgb = [196, 186, 170];
+const GROUND = 226;
 
 type Rgb = [number, number, number];
 type Point = { x: number; y: number };
@@ -54,12 +57,11 @@ function mix(start: Point, end: Point, amount: number, boost = 0): Point {
 }
 
 function depthAt(recipe: PoseRecipe, frame: number) {
-  const progress = (frame / FRAME_COUNT + recipe.phase / 256) % 1;
-  const wave = (1 - Math.cos(progress * recipe.cycles * Math.PI * 2)) / 2;
+  const progress = frame / FRAME_COUNT;
   if (recipe.movementType === 'isometric') {
-    return 0.5 + (0.06 + recipe.reach * 0.004) * Math.sin(progress * Math.PI * 2);
+    return 0.5 + 0.08 * Math.sin(progress * Math.PI * 2);
   }
-  return wave;
+  return (1 - Math.cos(progress * Math.PI * 2)) / 2;
 }
 
 function poseAt(recipe: PoseRecipe, depth: number): Joints {
@@ -472,15 +474,18 @@ function plankPose(depth: number): Joints {
 }
 
 function stamp(data: Buffer, x: number, y: number, radius: number, color: Rgb) {
-  const minX = Math.max(0, Math.floor(x - radius));
-  const maxX = Math.min(FRAME_WIDTH - 1, Math.ceil(x + radius));
-  const minY = Math.max(0, Math.floor(y - radius));
-  const maxY = Math.min(FRAME_HEIGHT - 1, Math.ceil(y + radius));
-  const limit = radius * radius;
+  const cx = x * SCALE;
+  const cy = y * SCALE;
+  const scaled = radius * SCALE;
+  const minX = Math.max(0, Math.floor(cx - scaled));
+  const maxX = Math.min(FRAME_WIDTH - 1, Math.ceil(cx + scaled));
+  const minY = Math.max(0, Math.floor(cy - scaled));
+  const maxY = Math.min(FRAME_HEIGHT - 1, Math.ceil(cy + scaled));
+  const limit = scaled * scaled;
   for (let py = minY; py <= maxY; py += 1) {
     for (let px = minX; px <= maxX; px += 1) {
-      const dx = px - x;
-      const dy = py - y;
+      const dx = px - cx;
+      const dy = py - cy;
       if (dx * dx + dy * dy <= limit) {
         const index = (py * FRAME_WIDTH + px) * 4;
         data[index] = color[0];
@@ -493,7 +498,7 @@ function stamp(data: Buffer, x: number, y: number, radius: number, color: Rgb) {
 }
 
 function stroke(data: Buffer, start: Point, end: Point, radius: number, color: Rgb) {
-  const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y)));
+  const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) * SCALE));
   for (let step = 0; step <= steps; step += 1) {
     const amount = step / steps;
     stamp(
@@ -526,39 +531,6 @@ function flipX(joints: Joints): Joints {
   };
 }
 
-function furniture(data: Buffer, recipe: PoseRecipe) {
-  if (recipe.posture === 'lie' || recipe.action === 'bridge' || recipe.action === 'crunch') {
-    stroke(data, point(48, 162), point(280, 162), 5, FLOOR);
-  }
-  if (recipe.posture === 'sit' || recipe.action === 'pulldown' || recipe.action === 'extend-leg') {
-    stroke(data, point(108, 168), point(196, 168), 6, PROP);
-    stroke(data, point(118, 168), point(112, 108), 5, PROP);
-  }
-  if (recipe.prop === 'machine' && recipe.posture === 'stand') {
-    stroke(data, point(250, 210), point(250, 48), 4, PROP);
-    stroke(data, point(236, 64), point(264, 64), 3, PROP);
-  }
-  if (recipe.posture === 'plank' || recipe.action === 'kick') {
-    stroke(data, point(40, 186), point(290, 186), 3, FLOOR);
-  }
-}
-
-function propAtHand(data: Buffer, recipe: PoseRecipe, hand: Point, other?: Point) {
-  if (recipe.prop === 'dumbbell') {
-    stamp(data, hand.x, hand.y, 8, PROP);
-    if (other) {
-      stamp(data, other.x, other.y, 8, PROP);
-    }
-    return;
-  }
-  if (recipe.prop === 'barbell') {
-    const across = other ?? point(hand.x + 36, hand.y);
-    stroke(data, point(hand.x - 28, hand.y), point(across.x + 8, across.y), 3, PROP);
-    stamp(data, hand.x - 28, hand.y, 6, PROP);
-    stamp(data, across.x + 8, across.y, 6, PROP);
-  }
-}
-
 function shift(joints: Joints, x: number, y: number): Joints {
   const move = (value: Point) => point(value.x + x, value.y + y);
   const maybe = (value?: Point) => (value ? move(value) : undefined);
@@ -580,37 +552,313 @@ function shift(joints: Joints, x: number, y: number): Joints {
   };
 }
 
-function drawJoints(data: Buffer, joints: Joints, color: Rgb) {
-  stroke(data, point(28, 220), point(292, 220), 2, FLOOR);
-  if (joints.otherKnee && joints.otherAnkle) {
-    stroke(data, joints.hip, joints.otherKnee, 4, INK);
-    stroke(data, joints.otherKnee, joints.otherAnkle, 4, INK);
-  } else {
-    stroke(data, point(joints.hip.x - 10, joints.hip.y + 2), point(joints.knee.x - 12, joints.knee.y), 4, INK);
-    stroke(data, point(joints.knee.x - 12, joints.knee.y), point(joints.ankle.x - 10, joints.ankle.y), 4, INK);
+function apart(anchor: Point, limb: Point, gap: number): Point {
+  const dx = limb.x - anchor.x;
+  const dy = limb.y - anchor.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance >= gap) {
+    return limb;
   }
-  stroke(data, joints.backElbow, joints.backHand, 3, INK);
-  stroke(data, joints.shoulder, joints.backElbow, 3, INK);
-  stroke(data, joints.neck, joints.hip, 5, INK);
-  stroke(data, joints.hip, joints.knee, 5, INK);
-  stroke(data, joints.knee, joints.ankle, 5, INK);
-  stroke(data, joints.shoulder, joints.elbow, 4, color);
-  stroke(data, joints.elbow, joints.hand, 4, color);
-  if (joints.otherElbow && joints.otherHand) {
-    stroke(data, joints.shoulder, joints.otherElbow, 4, color);
-    stroke(data, joints.otherElbow, joints.otherHand, 4, color);
+  if (distance < 1) {
+    return point(anchor.x - gap, anchor.y - gap * 0.4);
   }
-  stroke(data, joints.neck, joints.shoulder, 5, INK);
-  stamp(data, joints.head.x, joints.head.y, 13, INK);
+  return point(anchor.x + (dx / distance) * gap, anchor.y + (dy / distance) * gap);
 }
 
-export function paintFrame(recipe: PoseRecipe, frame: number) {
+function prepare(joints: Joints): Joints {
+  const farLeg = !joints.otherKnee || !joints.otherAnkle;
+  return {
+    ...joints,
+    backElbow: apart(joints.shoulder, joints.backElbow, 18),
+    backHand: apart(joints.hand, joints.backHand, 22),
+    otherKnee: farLeg
+      ? apart(joints.knee, point(joints.knee.x - 16, joints.knee.y - 10), 20)
+      : joints.otherKnee,
+    otherAnkle: farLeg
+      ? apart(joints.ankle, point(joints.ankle.x - 16, joints.ankle.y - 6), 18)
+      : joints.otherAnkle,
+  };
+}
+
+function pointsOf(joints: Joints) {
+  return [
+    joints.head,
+    joints.neck,
+    joints.shoulder,
+    joints.hip,
+    joints.knee,
+    joints.ankle,
+    joints.elbow,
+    joints.hand,
+    joints.backElbow,
+    joints.backHand,
+    joints.otherKnee,
+    joints.otherAnkle,
+    joints.otherElbow,
+    joints.otherHand,
+  ].filter((value): value is Point => value !== undefined);
+}
+
+function plant(joints: Joints, recipe: PoseRecipe): Joints {
+  if (recipe.prop === 'machine' && (recipe.posture === 'sit' || recipe.posture === 'lie')) {
+    return joints;
+  }
+  const hands =
+    recipe.posture === 'plank' || recipe.action === 'plank' || recipe.action === 'kick';
+  const resting =
+    recipe.posture === 'lie' ||
+    recipe.posture === 'sit' ||
+    recipe.posture === 'bridge' ||
+    recipe.action === 'bridge' ||
+    recipe.action === 'crunch';
+  if (resting) {
+    return joints;
+  }
+  const contact = hands
+    ? Math.max(joints.hand.y, joints.backHand.y)
+    : Math.max(joints.ankle.y, joints.otherAnkle?.y ?? joints.ankle.y);
+  return shift(joints, 0, GROUND - contact);
+}
+
+function clampFigure(joints: Joints): Joints {
+  const marks = pointsOf(joints);
+  const minX = Math.min(...marks.map((mark) => mark.x));
+  const maxX = Math.max(...marks.map((mark) => mark.x));
+  const minY = Math.min(...marks.map((mark) => mark.y));
+  let dx = 0;
+  if (minX < 22) {
+    dx = 22 - minX;
+  } else if (maxX > 298) {
+    dx = 298 - maxX;
+  }
+  const dy = minY < 16 ? 16 - minY : 0;
+  return shift(joints, dx, dy);
+}
+
+function facing(joints: Joints) {
+  return joints.hand.x >= joints.shoulder.x ? 1 : -1;
+}
+
+function outlined(data: Buffer, start: Point, end: Point, radius: number) {
+  stroke(data, start, end, radius + 1.6, INK);
+  stroke(data, start, end, radius, PROP);
+}
+
+function disc(data: Buffer, at: Point, radius: number) {
+  stamp(data, at.x, at.y, radius + 2.4, INK);
+  stamp(data, at.x, at.y, radius, PROP);
+}
+
+function handle(data: Buffer, at: Point) {
+  outlined(data, point(at.x - 9, at.y), point(at.x + 9, at.y), 2.4);
+}
+
+function dumbbell(data: Buffer, at: Point) {
+  outlined(data, point(at.x - 12, at.y), point(at.x + 12, at.y), 2.2);
+  disc(data, point(at.x - 12, at.y), 5);
+  disc(data, point(at.x + 12, at.y), 5);
+}
+
+function barbell(data: Buffer, hand: Point, other: Point) {
+  const gap = Math.hypot(other.x - hand.x, other.y - hand.y);
+  const start = gap < 48 ? point(hand.x - 42, hand.y) : other;
+  const end = gap < 48 ? point(hand.x + 42, hand.y) : hand;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const tipA = point(start.x - (dx / length) * 8, start.y - (dy / length) * 8);
+  const tipB = point(end.x + (dx / length) * 8, end.y + (dy / length) * 8);
+  outlined(data, tipA, tipB, 2.6);
+  disc(data, tipA, 6);
+  disc(data, tipB, 6);
+}
+
+function seatAndPost(data: Buffer, joints: Joints) {
+  const sign = facing(joints);
+  const seatY = joints.hip.y + 16;
+  outlined(data, point(joints.hip.x - 26, seatY), point(joints.hip.x + 24, seatY), 3);
+  const postX = joints.shoulder.x - sign * 32;
+  outlined(data, point(postX, seatY), point(postX, Math.min(joints.head.y, joints.shoulder.y - 36)), 3);
+}
+
+function bench(data: Buffer, joints: Joints) {
+  const y = Math.max(joints.shoulder.y, joints.hip.y) + 14;
+  const left = Math.min(joints.head.x, joints.hip.x, joints.knee.x) - 10;
+  const right = Math.max(joints.head.x, joints.hip.x, joints.knee.x) + 18;
+  stroke(data, point(left, y), point(right, y), 4, FLOOR);
+}
+
+function drawSupport(data: Buffer, joints: Joints, recipe: PoseRecipe) {
+  if (recipe.prop === 'machine') {
+    const sign = facing(joints);
+    const slug = recipe.equipment;
+    if (slug === 'cable-machine') {
+      const postX = joints.shoulder.x - sign * 52;
+      outlined(
+        data,
+        point(postX, GROUND),
+        point(postX, Math.min(joints.head.y - 10, 36)),
+        3,
+      );
+      return;
+    }
+    if (slug === 'leg-press-machine') {
+      seatAndPost(data, joints);
+      return;
+    }
+    if (
+      slug === 'leg-extension-machine' ||
+      slug === 'leg-curl-machine' ||
+      slug === 'glute-drive-machine'
+    ) {
+      bench(data, joints);
+      return;
+    }
+    if (slug === 'standing-calf-machine') {
+      outlined(
+        data,
+        point(joints.ankle.x - 18, joints.ankle.y),
+        point(joints.ankle.x + 18, joints.ankle.y),
+        3,
+      );
+      return;
+    }
+    seatAndPost(data, joints);
+    return;
+  }
+  const resting =
+    recipe.posture === 'lie' ||
+    recipe.posture === 'sit' ||
+    recipe.posture === 'bridge' ||
+    recipe.action === 'bridge' ||
+    recipe.action === 'crunch';
+  if (resting) {
+    bench(data, joints);
+    return;
+  }
+  stroke(data, point(16, GROUND), point(304, GROUND), 3, FLOOR);
+}
+
+function drawLoad(data: Buffer, joints: Joints, recipe: PoseRecipe) {
+  const otherHand = joints.otherHand ?? joints.backHand;
+  if (recipe.prop === 'dumbbell') {
+    dumbbell(data, joints.hand);
+    dumbbell(data, otherHand);
+    return;
+  }
+  if (recipe.prop === 'barbell') {
+    barbell(data, joints.hand, otherHand);
+    return;
+  }
+  if (recipe.prop !== 'machine') {
+    return;
+  }
+  const slug = recipe.equipment;
+  const sign = facing(joints);
+  if (slug === 'cable-machine') {
+    const postX = joints.shoulder.x - sign * 52;
+    const pulley = point(postX, Math.min(joints.shoulder.y - 20, joints.hand.y));
+    stroke(data, pulley, joints.hand, 2.2, INK);
+    disc(data, pulley, 4);
+    handle(data, joints.hand);
+    return;
+  }
+  if (slug === 'lat-pulldown-machine') {
+    const pulley = point(joints.hip.x, joints.head.y - 28);
+    stroke(data, pulley, joints.hand, 2.2, INK);
+    disc(data, pulley, 4);
+    barbell(data, joints.hand, otherHand);
+    return;
+  }
+  if (slug === 'pec-deck' || slug === 'lateral-raise-machine') {
+    disc(data, joints.elbow, 7);
+    disc(data, joints.otherElbow ?? joints.backElbow, 7);
+    return;
+  }
+  if (slug === 'leg-extension-machine' || slug === 'leg-curl-machine') {
+    disc(data, joints.ankle, 8);
+    return;
+  }
+  if (slug === 'leg-press-machine') {
+    outlined(
+      data,
+      point(joints.ankle.x - 8, joints.ankle.y - 10),
+      point(joints.ankle.x + 24, joints.ankle.y + 6),
+      4,
+    );
+    return;
+  }
+  if (slug === 'glute-drive-machine') {
+    outlined(data, point(joints.hip.x - 22, joints.hip.y - 8), point(joints.hip.x + 22, joints.hip.y - 8), 4);
+    return;
+  }
+  if (slug === 'standing-calf-machine') {
+    disc(data, point(joints.shoulder.x - 12, joints.shoulder.y - 6), 6);
+    disc(data, point(joints.shoulder.x + 12, joints.shoulder.y - 6), 6);
+    return;
+  }
+  if (slug === 'seated-calf-machine') {
+    disc(data, joints.knee, 7);
+    return;
+  }
+  if (slug === 'abdominal-crunch-machine') {
+    disc(data, point(joints.shoulder.x + sign * 14, joints.shoulder.y), 8);
+    return;
+  }
+  handle(data, joints.hand);
+  handle(data, otherHand);
+}
+
+function dot(data: Buffer, at: Point, color: Rgb) {
+  stamp(data, at.x, at.y, 3.4, color);
+}
+
+function drawJoints(data: Buffer, joints: Joints, color: Rgb) {
+  const bilateral = Boolean(joints.otherElbow && joints.otherHand);
+  if (joints.otherKnee && joints.otherAnkle) {
+    stroke(data, joints.hip, joints.otherKnee, 3.6, FAR);
+    stroke(data, joints.otherKnee, joints.otherAnkle, 3.6, FAR);
+  }
+  if (!bilateral) {
+    stroke(data, joints.shoulder, joints.backElbow, 3.2, FAR);
+    stroke(data, joints.backElbow, joints.backHand, 3.2, FAR);
+  }
+  stroke(data, joints.neck, joints.hip, 5.2, INK);
+  stroke(data, joints.hip, joints.knee, 4.8, INK);
+  stroke(data, joints.knee, joints.ankle, 4.8, INK);
+  stroke(data, joints.neck, joints.shoulder, 4.6, INK);
+  stroke(data, joints.shoulder, joints.elbow, 4.4, color);
+  stroke(data, joints.elbow, joints.hand, 4.4, color);
+  if (bilateral && joints.otherElbow && joints.otherHand) {
+    stroke(data, joints.shoulder, joints.otherElbow, 4.4, color);
+    stroke(data, joints.otherElbow, joints.otherHand, 4.4, color);
+  }
+  stroke(data, joints.neck, joints.head, 4, INK);
+  dot(data, joints.shoulder, INK);
+  dot(data, joints.elbow, color);
+  dot(data, joints.hand, color);
+  dot(data, joints.hip, INK);
+  dot(data, joints.knee, INK);
+  dot(data, joints.ankle, INK);
+  stamp(data, joints.head.x, joints.head.y, 11, INK);
+}
+
+export function renderFrame(recipe: PoseRecipe, frame: number) {
   const pixels = Buffer.from(background);
   const depth = depthAt(recipe, frame);
   const posed = recipe.lead === 'left' ? flipX(poseAt(recipe, depth)) : poseAt(recipe, depth);
-  const joints = shift(posed, recipe.nudgeX, recipe.nudgeY);
-  furniture(pixels, recipe);
-  propAtHand(pixels, recipe, joints.hand, joints.otherHand);
-  drawJoints(pixels, joints, accent(recipe.tint));
-  return encodePng(FRAME_WIDTH, FRAME_HEIGHT, pixels);
+  const shifted = shift(
+    posed,
+    recipe.nudgeX + (recipe.phase % 5) - 2,
+    recipe.nudgeY + (recipe.cycles % 2),
+  );
+  const joints = clampFigure(plant(prepare(shifted), recipe));
+  drawSupport(pixels, joints, recipe);
+  drawJoints(pixels, joints, accent(recipe.tint, recipe.phase));
+  drawLoad(pixels, joints, recipe);
+  return pixels;
+}
+
+export function paintFrame(recipe: PoseRecipe, frame: number) {
+  return encodePng(FRAME_WIDTH, FRAME_HEIGHT, renderFrame(recipe, frame));
 }

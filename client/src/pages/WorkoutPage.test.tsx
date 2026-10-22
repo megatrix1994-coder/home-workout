@@ -18,6 +18,7 @@ const plan = {
   rounds: 1,
   muscle: { id: 'm-1', slug: 'chest', name: 'Chest' },
   warmups: [],
+  cooldowns: [],
   exercises: [
     {
       id: 'line-0',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi } from '../api';
 import { labelDifficulty, labelEquipmentCategory, labelGoal, labelRegion, labelRole } from '../labels';
+import { PageNav } from '../components/PageNav';
 import { EmptyState, ErrorState, LoadingState, PageIntro } from '../components/Status';
 import type {
   Difficulty,
@@ -35,6 +36,44 @@ const goals: { value: '' | TrainingGoal; label: string }[] = [
   { value: 'general_fitness', label: 'General fitness' },
   { value: 'endurance', label: 'Endurance' },
 ];
+
+function PageButtons({
+  offset,
+  count,
+  total,
+  onOffset,
+}: {
+  offset: number;
+  count: number;
+  total: number;
+  onOffset: (offset: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <button
+        type="button"
+        disabled={offset <= 0}
+        aria-label="Previous page"
+        onClick={() => onOffset(Math.max(0, offset - PAGE_SIZE))}
+        className="text-sm font-semibold hover:underline disabled:opacity-40 disabled:hover:no-underline"
+      >
+        <span aria-hidden="true">← </span>
+        Previous
+      </button>
+      <p className="text-center text-sm text-muted">{rangeLabel(offset, count, total)}</p>
+      <button
+        type="button"
+        disabled={offset + count >= total}
+        aria-label="Next page"
+        onClick={() => onOffset(offset + PAGE_SIZE)}
+        className="text-sm font-semibold text-accent hover:underline disabled:opacity-40 disabled:hover:no-underline"
+      >
+        Next
+        <span aria-hidden="true"> →</span>
+      </button>
+    </div>
+  );
+}
 
 function rangeLabel(offset: number, count: number, total: number) {
   const noun = total === 1 ? 'exercise' : 'exercises';
@@ -95,6 +134,13 @@ export function ExercisesPage() {
 
   return (
     <>
+      <PageNav
+        fallbackTo="/"
+        links={[
+          { to: '/muscles', label: 'Muscle groups' },
+          { to: '/workouts/new', label: 'Build a workout' },
+        ]}
+      />
       <PageIntro eyebrow="Library" title="Exercises">
         <p>
           Search by name, or narrow the list to a muscle group, a goal, a difficulty, and the
@@ -200,35 +246,13 @@ export function ExercisesPage() {
       ) : null}
       {exercises.status === 'ready' && exercises.data.data.length > 0 ? (
         <>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-muted">
-              {rangeLabel(
-                offset,
-                exercises.data.data.length,
-                exercises.data.meta?.total ?? exercises.data.data.length,
-              )}
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                disabled={offset <= 0}
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                className="rounded-full border border-line bg-card px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={
-                  offset + exercises.data.data.length >=
-                  (exercises.data.meta?.total ?? exercises.data.data.length)
-                }
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-                className="rounded-full border border-line bg-card px-4 py-2 text-sm font-semibold disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
+          <div className="mb-4">
+            <PageButtons
+              offset={offset}
+              count={exercises.data.data.length}
+              total={exercises.data.meta?.total ?? exercises.data.data.length}
+              onOffset={setOffset}
+            />
           </div>
           <ul className="grid gap-3">
             {exercises.data.data.map((exercise) => (
@@ -261,6 +285,14 @@ export function ExercisesPage() {
               </li>
             ))}
           </ul>
+          <div className="mt-6">
+            <PageButtons
+              offset={offset}
+              count={exercises.data.data.length}
+              total={exercises.data.meta?.total ?? exercises.data.data.length}
+              onOffset={setOffset}
+            />
+          </div>
         </>
       ) : null}
     </>

@@ -63,11 +63,20 @@ export type AnimationAsset = {
   assetUrl: string;
 };
 
+export type ExerciseNeighbor = {
+  slug: string;
+  name: string;
+};
+
 export type ExerciseDetail = ExerciseSummary & {
   description: string;
   instructions: string;
   progression?: ProgressionStep[];
   animations?: AnimationAsset[];
+  navigation?: {
+    previous: ExerciseNeighbor | null;
+    next: ExerciseNeighbor | null;
+  };
 };
 
 export type ListResponse<T> = {
@@ -100,6 +109,15 @@ export type WarmupStretch = {
   name: string;
   instructions: string;
   durationSeconds: number;
+};
+
+export type WorkoutCooldown = {
+  id: string;
+  order: number;
+  durationSeconds: number;
+  status: 'pending' | 'completed' | 'skipped';
+  muscle: { id: string; slug: string; name: string };
+  stretch: WarmupStretch & { animations?: AnimationAsset[] };
 };
 
 export type WorkoutRecommendation = {
@@ -140,6 +158,7 @@ export type WorkoutPlan = {
     durationSeconds: number;
     stretch: WarmupStretch;
   }>;
+  cooldowns?: WorkoutCooldown[];
   exercises: Array<
     WorkoutSlot & {
       id: string;

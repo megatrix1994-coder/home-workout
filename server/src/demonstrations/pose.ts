@@ -210,3 +210,41 @@ export function poseRecipe(exercise: PoseInput): PoseRecipe {
     tint: (motion >>> 16) % 24,
   };
 }
+
+const stretchMotion: Record<MuscleSlug, { action: Action; posture: Posture; easierPosture: Posture }> = {
+  chest: { action: 'fly', posture: 'stand', easierPosture: 'sit' },
+  back: { action: 'hinge', posture: 'kneel', easierPosture: 'sit' },
+  shoulders: { action: 'raise', posture: 'stand', easierPosture: 'sit' },
+  biceps: { action: 'extend', posture: 'stand', easierPosture: 'sit' },
+  triceps: { action: 'extend', posture: 'stand', easierPosture: 'stand' },
+  forearms: { action: 'curl', posture: 'stand', easierPosture: 'sit' },
+  quadriceps: { action: 'curl-leg', posture: 'stand', easierPosture: 'lie' },
+  hamstrings: { action: 'hinge', posture: 'lie', easierPosture: 'sit' },
+  glutes: { action: 'bridge', posture: 'lie', easierPosture: 'lie' },
+  calves: { action: 'calf', posture: 'stand', easierPosture: 'sit' },
+  abdominals: { action: 'crunch', posture: 'lie', easierPosture: 'kneel' },
+};
+
+export function stretchPose(input: {
+  slug: string;
+  muscle: MuscleSlug;
+  instructions: string;
+}): PoseRecipe {
+  const recipe = poseRecipe({
+    slug: input.slug,
+    instructions: input.instructions,
+    movementType: 'isometric',
+    region: 'overall',
+    muscles: [{ slug: input.muscle, role: 'primary' }],
+    equipment: ['bodyweight'],
+  });
+  const motion = stretchMotion[input.muscle];
+  return {
+    ...recipe,
+    posture: input.slug.endsWith('-easier') ? motion.easierPosture : motion.posture,
+    action: motion.action,
+    prop: 'none',
+    equipment: 'bodyweight',
+    movementType: 'isometric',
+  };
+}
