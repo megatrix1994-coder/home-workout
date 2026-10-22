@@ -8,7 +8,7 @@ import {
   PageIntro,
 } from '../components/Status';
 import { WorkoutSummary } from '../components/WorkoutSummary';
-import { LAST_WORKOUT_KEY } from '../storage';
+import { rememberDraft } from '../storage';
 import type {
   EquipmentCategory,
   ExperienceLevel,
@@ -177,7 +177,7 @@ export function WorkoutBuilderPage() {
           }),
         },
       );
-      localStorage.setItem(LAST_WORKOUT_KEY, response.data.id);
+      rememberDraft(response.data.id);
       navigate(`/workouts/${response.data.id}`);
     } catch (error) {
       setSaveError(

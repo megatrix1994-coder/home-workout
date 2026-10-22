@@ -55,10 +55,19 @@ export type ExerciseProgression = {
   outcome: string | null;
 };
 
+export type AnimationFormat = 'lottie' | 'video' | 'image';
+
+export type AnimationAsset = {
+  id: string;
+  format: AnimationFormat;
+  assetUrl: string;
+};
+
 export type ExerciseDetail = ExerciseSummary & {
   description: string;
   instructions: string;
   progression?: ProgressionStep[];
+  animations?: AnimationAsset[];
 };
 
 export type ListResponse<T> = {
@@ -82,6 +91,7 @@ export type WorkoutSlot = {
   restSeconds: number;
   reason: string;
   alternatives: WorkoutAlternative[];
+  progression?: ExerciseProgression;
 };
 
 export type WarmupStretch = {

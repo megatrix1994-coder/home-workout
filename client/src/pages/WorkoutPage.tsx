@@ -10,7 +10,7 @@ import {
 import { GuidedSession } from '../components/GuidedSession';
 import { WorkoutSummary } from '../components/WorkoutSummary';
 import { labelEquipmentCategory, labelExperience, labelGoal } from '../labels';
-import { LAST_WORKOUT_KEY } from '../storage';
+import { rememberStarted } from '../storage';
 import type {
   ItemResponse,
   WorkoutPlan,
@@ -42,7 +42,6 @@ export function WorkoutPage() {
       slots: workout.exercises,
       plan: workout,
     });
-    localStorage.setItem(LAST_WORKOUT_KEY, workout.id);
   }, [workout]);
 
   async function persist(andStart: boolean) {
@@ -72,6 +71,9 @@ export function WorkoutPage() {
             },
           )
         : saved;
+      if (andStart) {
+        rememberStarted(next.data.id);
+      }
       setLocal({
         id: next.data.id,
         status: next.data.status,

@@ -33,6 +33,7 @@ export type Candidate = {
   goals: TrainingGoal[];
   muscles: { slug: string; name: string; role: MuscleRole }[];
   equipment: { slug: string; name: string; category: EquipmentCategory }[];
+  animations?: { id: string; format: 'lottie' | 'video' | 'image'; assetUrl: string }[];
 };
 
 export type RecommendationInput = {

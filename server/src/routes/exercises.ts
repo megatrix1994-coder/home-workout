@@ -1,6 +1,7 @@
 import type { Equipment, Exercise, ExerciseEquipment, ExerciseMuscle, MuscleGroup } from '@prisma/client';
 import { Router } from 'express';
 import { prisma } from '../db.js';
+import { approvedAnimations } from '../lib/animations.js';
 import { buildExerciseWhere, exerciseListQuerySchema } from '../lib/exercise-query.js';
 import { HttpError } from '../lib/http.js';
 import { progressionCycle } from '../lib/progression.js';
@@ -12,9 +13,22 @@ const exerciseInclude = {
   equipment: { include: { equipment: true } },
 } as const;
 
+const exerciseDetailInclude = {
+  ...exerciseInclude,
+  animations: {
+    select: { id: true, format: true, assetUrl: true, reviewStatus: true },
+  },
+} as const;
+
 type ExerciseRecord = Exercise & {
   muscles: (ExerciseMuscle & { muscle: MuscleGroup })[];
   equipment: (ExerciseEquipment & { equipment: Equipment })[];
+  animations?: Array<{
+    id: string;
+    format: 'lottie' | 'video' | 'image';
+    assetUrl: string;
+    reviewStatus: 'draft' | 'approved';
+  }>;
 };
 
 function serializeExercise(exercise: ExerciseRecord, includeInstructions: boolean) {
@@ -49,6 +63,7 @@ function serializeExercise(exercise: ExerciseRecord, includeInstructions: boolea
       }))
       .sort((left, right) => left.name.localeCompare(right.name)),
     ...(includeInstructions ? { progression: progressionFor(exercise) } : {}),
+    ...(includeInstructions ? { animations: approvedAnimations(exercise.animations) } : {}),
   };
 }
 
@@ -97,7 +112,7 @@ exercisesRouter.get(
     const id = req.params.id;
     const exercise = await prisma.exercise.findFirst({
       where: { OR: [{ id }, { slug: id }] },
-      include: exerciseInclude,
+      include: exerciseDetailInclude,
     });
 
     if (!exercise) {

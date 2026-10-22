@@ -22,7 +22,9 @@ describe('ExerciseDetailPage', () => {
             slug: 'dumbbell-row',
             name: 'Dumbbell row',
             description: 'A one-arm free-weight row.',
-            instructions: 'Setup: Support one hand on a bench.\n1. Pull toward the hip.',
+            instructions:
+              'Setup: Support one hand on a bench.\n1. Pull toward the hip.\nBreathing: Exhale as you pull.\nCommon mistakes: Do not twist.',
+            animations: [{ id: 'clip-1', format: 'video', assetUrl: '/row.mp4' }],
             difficulty: 'intermediate',
             movementType: 'compound',
             goals: ['hypertrophy'],
@@ -74,7 +76,14 @@ describe('ExerciseDetailPage', () => {
       'href',
       '/exercises?muscle=back',
     );
-    expect(screen.getByText(/Setup: Support one hand on a bench./)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Setup' })).toBeInTheDocument();
+    expect(screen.getByText('Support one hand on a bench.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Execution' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Breathing' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Common mistakes' })).toBeInTheDocument();
+    const video = screen.getByLabelText('Exercise demonstration');
+    expect(video).toHaveAttribute('src', '/row.mp4');
+    expect(video).not.toHaveAttribute('autoplay');
     expect(screen.getByRole('heading', { name: 'Progressive overload' })).toBeInTheDocument();
     expect(screen.getByText(/add 1 kg next time/)).toBeInTheDocument();
     expect(screen.getByText(/add 5 kg next time/)).toBeInTheDocument();

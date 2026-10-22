@@ -31,6 +31,7 @@ export function replaceExercise(
       exercise: alternative.exercise,
       reason: alternative.reason,
       alternatives,
+      progression: undefined,
     };
   });
 }

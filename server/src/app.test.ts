@@ -117,6 +117,7 @@ describe('catalogue API', () => {
       ],
     });
     expect(response.body.data[0].instructions).toBeUndefined();
+    expect(response.body.data[0].animations).toBeUndefined();
     expect(findManyExercises).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -149,6 +150,7 @@ describe('catalogue API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.instructions).toContain('Setup:');
+    expect(response.body.data.animations).toEqual([]);
     expect(response.body.data.equipment[0].name).toBe('Chest press machine');
     expect(response.body.data.progression).toEqual([
       expect.objectContaining({
@@ -167,6 +169,25 @@ describe('catalogue API', () => {
         },
       }),
     );
+  });
+
+  it('returns only approved animations on an exercise', async () => {
+    findFirstExercise.mockResolvedValue({
+      ...chestPress,
+      animations: [
+        { id: 'draft-1', format: 'video', assetUrl: '/draft.mp4', reviewStatus: 'draft' },
+        { id: 'clip-1', format: 'video', assetUrl: '/press.mp4', reviewStatus: 'approved' },
+        { id: 'motion-1', format: 'lottie', assetUrl: '/press.json', reviewStatus: 'approved' },
+      ],
+    });
+
+    const response = await request(app).get('/api/v1/exercises/machine-chest-press');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.animations).toEqual([
+      { id: 'clip-1', format: 'video', assetUrl: '/press.mp4' },
+      { id: 'motion-1', format: 'lottie', assetUrl: '/press.json' },
+    ]);
   });
 
   it('returns 404 when an exercise is missing', async () => {

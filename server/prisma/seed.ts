@@ -104,6 +104,16 @@ async function main() {
         return { exerciseId: saved.id, equipmentId: row.id };
       }),
     });
+
+    await prisma.animationAsset.deleteMany({ where: { exerciseId: saved.id } });
+    await prisma.animationAsset.create({
+      data: {
+        exerciseId: saved.id,
+        assetUrl: `/demonstrations/${exercise.slug}.mp4`,
+        format: 'video',
+        reviewStatus: 'approved',
+      },
+    });
   }
 
   await prisma.stretch.deleteMany({

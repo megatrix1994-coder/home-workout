@@ -353,6 +353,35 @@ describe('workout API', () => {
     expect(response.body.data.estimatedMinutes).toBeLessThan(90);
   });
 
+  it('includes the last load on a recommendation before the workout is saved', async () => {
+    findManyWorkouts.mockResolvedValue([
+      {
+        rounds: 1,
+        exercises: [
+          {
+            exerciseId: pushUp.id,
+            sets: 3,
+            setLogs: [
+              { repsCompleted: 10, weightKg: 10 },
+              { repsCompleted: 10, weightKg: 10 },
+              { repsCompleted: 10, weightKg: 10 },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const response = await request(app).get(
+      '/api/v1/workouts/recommendations?muscle=chest&goal=general_fitness&experience=beginner&equipment=bodyweight&length=standard',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.exercises[0].progression).toMatchObject({
+      suggestedWeightKg: 11,
+      earned: true,
+    });
+  });
+
   it('saves a draft workout and reads it back', async () => {
     const created = await request(app)
       .post('/api/v1/workouts')
@@ -380,6 +409,31 @@ describe('workout API', () => {
     const fetched = await request(app).get('/api/v1/workouts/workout-1');
     expect(fetched.status).toBe(200);
     expect(fetched.body.data.exercises[0].exercise.slug).toBe('push-up');
+    expect(fetched.body.data.exercises[0].exercise.animations).toEqual([]);
+  });
+
+  it('returns only an approved video on a saved exercise', async () => {
+    await request(app).post('/api/v1/workouts').send({
+      muscle: 'chest',
+      goal: 'strength',
+      experience: 'beginner',
+      equipmentCategories: ['bodyweight'],
+      exercises: [{ exerciseId: 'ex-push', sets: 4, reps: '5', restSeconds: 150 }],
+    });
+    current!.exercises[0].exercise = {
+      ...pushUp,
+      animations: [
+        { id: 'draft-1', format: 'video', assetUrl: '/draft.mp4', reviewStatus: 'draft' },
+        { id: 'clip-1', format: 'video', assetUrl: '/push-up.mp4', reviewStatus: 'approved' },
+      ],
+    };
+
+    const fetched = await request(app).get('/api/v1/workouts/workout-1');
+
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.data.exercises[0].exercise.animations).toEqual([
+      { id: 'clip-1', format: 'video', assetUrl: '/push-up.mp4' },
+    ]);
   });
 
   it('saves a standard session as one round', async () => {

@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageIntro } from '../components/Status';
-import { LAST_WORKOUT_KEY } from '../storage';
+import { readWorkoutLinks } from '../storage';
 
 export function HomePage() {
-  const [savedWorkoutId, setSavedWorkoutId] = useState<string | null>(null);
+  const [links, setLinks] = useState<{ draftId: string | null; startedId: string | null }>({
+    draftId: null,
+    startedId: null,
+  });
 
   useEffect(() => {
-    setSavedWorkoutId(localStorage.getItem(LAST_WORKOUT_KEY));
+    setLinks(readWorkoutLinks());
   }, []);
 
   return (
@@ -28,12 +31,20 @@ export function HomePage() {
         >
           Build a workout
         </Link>
-        {savedWorkoutId ? (
+        {links.startedId ? (
           <Link
-            to={`/workouts/${savedWorkoutId}`}
+            to={`/workouts/${links.startedId}`}
             className="rounded-full border border-line bg-card px-5 py-2.5 font-semibold"
           >
-            Resume workout
+            Continue workout
+          </Link>
+        ) : null}
+        {links.draftId && links.draftId !== links.startedId ? (
+          <Link
+            to={`/workouts/${links.draftId}`}
+            className="rounded-full border border-line bg-card px-5 py-2.5 font-semibold"
+          >
+            Open saved draft
           </Link>
         ) : null}
         <Link

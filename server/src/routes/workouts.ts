@@ -7,6 +7,7 @@ import type {
 } from '@prisma/client';
 import { Router } from 'express';
 import { prisma } from '../db.js';
+import { approvedAnimations } from '../lib/animations.js';
 import { HttpError } from '../lib/http.js';
 import {
   exerciseReason,
@@ -34,6 +35,9 @@ import { warmups as warmupCatalogue } from '../warmups.js';
 const exerciseInclude = {
   muscles: { include: { muscle: true } },
   equipment: { include: { equipment: true } },
+  animations: {
+    select: { id: true, format: true, assetUrl: true, reviewStatus: true },
+  },
 } as const;
 
 const workoutInclude = {
@@ -54,6 +58,12 @@ const workoutInclude = {
 type ExerciseRecord = Exercise & {
   muscles: (ExerciseMuscle & { muscle: MuscleGroup })[];
   equipment: (ExerciseEquipment & { equipment: Equipment })[];
+  animations?: Array<{
+    id: string;
+    format: 'lottie' | 'video' | 'image';
+    assetUrl: string;
+    reviewStatus: 'draft' | 'approved';
+  }>;
 };
 
 type WorkoutSetLogRecord = {
@@ -136,6 +146,7 @@ function toCandidate(exercise: ExerciseRecord): Candidate {
         category: item.equipment.category,
       }))
       .sort((left, right) => left.name.localeCompare(right.name)),
+    animations: approvedAnimations(exercise.animations),
   };
 }
 
@@ -238,7 +249,12 @@ async function serializeWorkout(workout: WorkoutRecord) {
   );
   const candidates = await loadPrimaryCandidates(workout.muscleId);
   const selectedIds = workout.exercises.map((exercise) => exercise.exerciseId);
-  const previousLogs = await priorLogsByExercise(workout);
+  const previousLogs = await priorLogsByExercise({
+    excludeId: workout.id,
+    muscleId: workout.muscleId,
+    goal: workout.goal,
+    experience: workout.experience,
+  });
   const exercises = [...workout.exercises].sort(
     (left, right) => left.order - right.order,
   );
@@ -304,13 +320,18 @@ async function serializeWorkout(workout: WorkoutRecord) {
   };
 }
 
-async function priorLogsByExercise(workout: WorkoutRecord) {
+async function priorLogsByExercise(query: {
+  excludeId?: string;
+  muscleId: string;
+  goal: TrainingGoal;
+  experience: ExperienceLevel;
+}) {
   const plans = await prisma.workoutPlan.findMany({
     where: {
-      id: { not: workout.id },
-      muscleId: workout.muscleId,
-      goal: workout.goal,
-      experience: workout.experience,
+      ...(query.excludeId ? { id: { not: query.excludeId } } : {}),
+      muscleId: query.muscleId,
+      goal: query.goal,
+      experience: query.experience,
       status: { in: ['started', 'completed'] },
     },
     orderBy: { updatedAt: 'desc' },
@@ -389,6 +410,11 @@ workoutsRouter.get(
       warmups.reduce((sum, stretch) => sum + stretch.durationSeconds, 0),
       query.length,
     );
+    const previousLogs = await priorLogsByExercise({
+      muscleId: muscle.id,
+      goal: query.goal,
+      experience: query.experience,
+    });
 
     res.json({
       data: {
@@ -400,7 +426,21 @@ workoutsRouter.get(
         estimatedMinutes: recommendation.estimatedMinutes,
         rounds: recommendation.rounds,
         warmups: warmups.map((stretch) => presentWarmup(stretch)),
-        exercises: recommendation.exercises,
+        exercises: recommendation.exercises.map((slot) => ({
+          ...slot,
+          progression: exerciseProgression({
+            experience: query.experience,
+            goal: query.goal,
+            movementType: slot.exercise.movementType,
+            bodyweightOnly: slot.exercise.equipment.every(
+              (item) => item.category === 'bodyweight',
+            ),
+            expectedSets: slot.sets * recommendation.rounds,
+            currentLogs: [],
+            previousLogs: previousLogs.get(slot.exercise.id)?.logs ?? null,
+            previousExpectedSets: previousLogs.get(slot.exercise.id)?.expectedSets ?? 0,
+          }),
+        })),
       },
     });
   }),

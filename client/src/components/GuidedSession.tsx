@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '../api';
+import { Demonstration } from './Demonstration';
 import type { ItemResponse, WorkoutPlan } from '../types';
 
 type OpenSet = {
@@ -29,10 +30,77 @@ function openSet(workout: WorkoutPlan): OpenSet | null {
   return null;
 }
 
+function FinishedOutcomes({
+  workout,
+  currentExerciseId,
+}: {
+  workout: WorkoutPlan;
+  currentExerciseId: string;
+}) {
+  const finished = workout.exercises.filter(
+    (item) => item.id !== currentExerciseId && item.progression?.outcome,
+  );
+  if (finished.length === 0) {
+    return null;
+  }
+  return (
+    <ul className="mt-4 space-y-2">
+      {finished.map((item) => (
+        <li key={item.id}>
+          <span className="font-semibold">{item.exercise.name}. </span>
+          {item.progression?.outcome}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function formatClock(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
   return `${minutes}:${String(rest).padStart(2, '0')}`;
+}
+
+type StoredRest = {
+  endsAt: number;
+  exerciseId: string;
+  round: number;
+  setNumber: number;
+};
+
+function restStorageKey(workoutId: string) {
+  return `home-workout:rest:${workoutId}`;
+}
+
+function readStoredRest(workoutId: string): StoredRest | null {
+  const raw = sessionStorage.getItem(restStorageKey(workoutId));
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as StoredRest;
+    if (
+      typeof parsed.endsAt !== 'number' ||
+      typeof parsed.exerciseId !== 'string' ||
+      typeof parsed.round !== 'number' ||
+      typeof parsed.setNumber !== 'number'
+    ) {
+      sessionStorage.removeItem(restStorageKey(workoutId));
+      return null;
+    }
+    return parsed;
+  } catch {
+    sessionStorage.removeItem(restStorageKey(workoutId));
+    return null;
+  }
+}
+
+function writeStoredRest(workoutId: string, rest: StoredRest) {
+  sessionStorage.setItem(restStorageKey(workoutId), JSON.stringify(rest));
+}
+
+function clearStoredRest(workoutId: string) {
+  sessionStorage.removeItem(restStorageKey(workoutId));
 }
 
 export function GuidedSession({
@@ -45,10 +113,13 @@ export function GuidedSession({
   const hasLogs = workout.exercises.some((exercise) => (exercise.setLogs ?? []).length > 0);
   const [warmupIndex, setWarmupIndex] = useState(0);
   const [pastWarmup, setPastWarmup] = useState(hasLogs || workout.warmups.length === 0);
+  const [warmupSeconds, setWarmupSeconds] = useState(
+    () => workout.warmups[0]?.durationSeconds ?? 0,
+  );
   const [restSeconds, setRestSeconds] = useState<number | null>(null);
   const [reps, setReps] = useState(1);
   const [weight, setWeight] = useState('');
-  const [lastOutcome, setLastOutcome] = useState<string | null>(null);
+  const [lastOutcome, setLastOutcome] = useState<{ id: string; text: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const current = openSet(workout);
@@ -58,6 +129,24 @@ export function GuidedSession({
   const exerciseReps = exercise?.reps;
   const round = current?.round;
   const setNumber = current?.setNumber;
+  const warmupDuration = workout.warmups[warmupIndex]?.durationSeconds ?? 0;
+
+  useEffect(() => {
+    if (pastWarmup) {
+      return;
+    }
+    setWarmupSeconds(warmupDuration);
+  }, [pastWarmup, warmupIndex, warmupDuration]);
+
+  useEffect(() => {
+    if (pastWarmup || warmupSeconds <= 0) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setWarmupSeconds((value) => (value <= 0 ? 0 : value - 1));
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [pastWarmup, warmupSeconds]);
 
   useEffect(() => {
     if (!exerciseId || round == null || setNumber == null) {
@@ -68,10 +157,38 @@ export function GuidedSession({
   }, [exerciseId, exerciseReps, suggestedWeight, round, setNumber]);
 
   useEffect(() => {
+    setLastOutcome((currentOutcome) =>
+      currentOutcome?.id === exerciseId ? currentOutcome : null,
+    );
+  }, [exerciseId]);
+
+  useEffect(() => {
+    if (!exerciseId || round == null || setNumber == null) {
+      return;
+    }
+    const stored = readStoredRest(workout.id);
+    if (
+      !stored ||
+      stored.exerciseId !== exerciseId ||
+      stored.round !== round ||
+      stored.setNumber !== setNumber
+    ) {
+      return;
+    }
+    const remaining = Math.ceil((stored.endsAt - Date.now()) / 1000);
+    if (remaining > 0) {
+      setRestSeconds(remaining);
+      return;
+    }
+    clearStoredRest(workout.id);
+  }, [workout.id, exerciseId, round, setNumber]);
+
+  useEffect(() => {
     if (restSeconds === null) {
       return;
     }
     if (restSeconds <= 0) {
+      clearStoredRest(workout.id);
       setRestSeconds(null);
       return;
     }
@@ -79,7 +196,7 @@ export function GuidedSession({
       setRestSeconds((value) => (value === null ? null : value - 1));
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [restSeconds]);
+  }, [restSeconds, workout.id]);
 
   if (workout.status === 'completed' || !current || !exercise) {
     const logs = workout.exercises.flatMap((item) => item.setLogs ?? []);
@@ -118,7 +235,7 @@ export function GuidedSession({
           Warm-up {warmupIndex + 1} of {workout.warmups.length}
         </p>
         <h2 className="mt-2 font-display text-4xl font-semibold">{warmup.stretch.name}</h2>
-        <p className="mt-3 text-sm font-semibold">{warmup.durationSeconds} seconds</p>
+        <p className="mt-3 font-display text-5xl font-semibold">{formatClock(warmupSeconds)}</p>
         <p className="mt-4 whitespace-pre-line leading-7">{warmup.stretch.instructions}</p>
         <button
           type="button"
@@ -127,7 +244,9 @@ export function GuidedSession({
               setPastWarmup(true);
               return;
             }
-            setWarmupIndex((index) => index + 1);
+            const next = warmupIndex + 1;
+            setWarmupIndex(next);
+            setWarmupSeconds(workout.warmups[next]?.durationSeconds ?? 0);
           }}
           className="mt-6 rounded-full bg-accent px-5 py-2.5 font-semibold text-white"
         >
@@ -164,9 +283,20 @@ export function GuidedSession({
       );
       onChange(saved.data);
       const savedLine = saved.data.exercises.find((item) => item.id === exercise.id);
-      setLastOutcome(savedLine?.progression?.outcome ?? null);
-      if (saved.data.status !== 'completed') {
+      const outcome = savedLine?.progression?.outcome;
+      setLastOutcome(outcome ? { id: exercise.id, text: outcome } : null);
+      const next = saved.data.status === 'completed' ? null : openSet(saved.data);
+      if (next) {
+        const nextExercise = saved.data.exercises[next.exerciseIndex];
+        writeStoredRest(workout.id, {
+          endsAt: Date.now() + exercise.restSeconds * 1000,
+          exerciseId: nextExercise?.id ?? exercise.id,
+          round: next.round,
+          setNumber: next.setNumber,
+        });
         setRestSeconds(exercise.restSeconds);
+      } else {
+        clearStoredRest(workout.id);
       }
     } catch (failure: unknown) {
       setError(failure instanceof Error ? failure.message : 'Could not save this set.');
@@ -176,28 +306,34 @@ export function GuidedSession({
   }
 
   return (
+    <>
     <section className="rounded-2xl border border-line bg-card p-5">
       <p className="text-sm font-semibold text-accent">
         Round {current.round} of {workout.rounds} · Set {current.setNumber} of {exercise.sets}
       </p>
       <h2 className="mt-2 font-display text-4xl font-semibold">{exercise.exercise.name}</h2>
       <p className="mt-3 text-sm">{exercise.reason}</p>
-      <p className="mt-4 whitespace-pre-line leading-7">{exercise.exercise.instructions}</p>
-      <p className="mt-4 text-sm text-muted">
-        These instructions are the demonstration until a reviewed animation is available. Stop if the
-        movement hurts.
-      </p>
+      <Demonstration
+        instructions={exercise.exercise.instructions}
+        animations={exercise.exercise.animations}
+      />
+      <p className="mt-4 text-sm text-muted">Stop if the movement hurts.</p>
       {exercise.progression?.summary ? (
         <p className="mt-4 text-sm leading-6">{exercise.progression.summary}</p>
       ) : null}
-      {lastOutcome ? <p className="mt-3 text-sm font-semibold">{lastOutcome}</p> : null}
+      {lastOutcome?.id === exercise.id ? (
+        <p className="mt-3 text-sm font-semibold">{lastOutcome.text}</p>
+      ) : null}
       {restSeconds !== null ? (
         <div className="mt-6">
           <p className="font-display text-5xl font-semibold">{formatClock(restSeconds)}</p>
           <p className="mt-2 text-sm font-semibold">Rest before the next set.</p>
           <button
             type="button"
-            onClick={() => setRestSeconds(null)}
+            onClick={() => {
+              clearStoredRest(workout.id);
+              setRestSeconds(null);
+            }}
             className="mt-4 rounded-full border border-line bg-paper px-5 py-2.5 font-semibold"
           >
             Skip rest
@@ -244,5 +380,7 @@ export function GuidedSession({
         </p>
       ) : null}
     </section>
+    <FinishedOutcomes workout={workout} currentExerciseId={exercise.id} />
+  </>
   );
 }

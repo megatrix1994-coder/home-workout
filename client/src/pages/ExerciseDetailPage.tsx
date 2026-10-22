@@ -8,6 +8,7 @@ import {
   labelMovement,
   labelRole,
 } from '../labels';
+import { Demonstration } from '../components/Demonstration';
 import { ErrorState, LoadingState } from '../components/Status';
 import type { ExerciseDetail, ItemResponse } from '../types';
 
@@ -87,7 +88,7 @@ export function ExerciseDetailPage() {
 
       <section className="mt-4 rounded-2xl border border-line bg-card p-5">
         <h2 className="font-display text-2xl font-semibold">Instructions</h2>
-        <p className="mt-3 whitespace-pre-line leading-7">{exercise.instructions}</p>
+        <Demonstration instructions={exercise.instructions} animations={exercise.animations} />
         <p className="mt-4 text-sm text-muted">
           These instructions are general fitness education, not a medical assessment. Stop if a
           movement causes pain.

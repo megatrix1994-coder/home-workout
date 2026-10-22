@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DRAFT_WORKOUT_KEY, STARTED_WORKOUT_KEY } from '../storage';
 import { WorkoutBuilderPage } from './WorkoutBuilderPage';
 
 const pushUp = {
@@ -204,12 +205,22 @@ describe('WorkoutBuilderPage', () => {
             experience: 'intermediate',
             equipmentCategories: ['free_weight', 'bodyweight'],
             exercises: [
-              slot(pushUp, [
-                {
-                  exercise: dumbbellPress,
-                  reason: 'Dumbbell bench press matches free weights.',
+              {
+                ...slot(pushUp, [
+                  {
+                    exercise: dumbbellPress,
+                    reason: 'Dumbbell bench press matches free weights.',
+                  },
+                ]),
+                progression: {
+                  cleanReps: 8,
+                  jumpKg: 1,
+                  suggestedWeightKg: 12.5,
+                  earned: true,
+                  summary: 'When every set reaches 8 clean reps, add 1 kg next time.',
+                  outcome: null,
                 },
-              ]),
+              },
             ],
           },
         });
@@ -223,6 +234,10 @@ describe('WorkoutBuilderPage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Push-up' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('Use 12.5 kg this time.')).toBeInTheDocument();
+    await userEvent.clear(screen.getByRole('spinbutton', { name: 'Sets for Push-up' }));
+    await userEvent.type(screen.getByRole('spinbutton', { name: 'Sets for Push-up' }), '4');
+    expect(screen.getByText('Use 12.5 kg this time.')).toBeInTheDocument();
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Replace Push-up' }),
       'ex-db',
@@ -230,9 +245,65 @@ describe('WorkoutBuilderPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Dumbbell bench press' }),
     ).toBeInTheDocument();
+    expect(screen.queryByText('Use 12.5 kg this time.')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: 'Push-up' }),
     ).not.toBeInTheDocument();
     expect(screen.getByText('Setup: Lie on a bench.')).toBeInTheDocument();
+  });
+
+  it('saves a new plan as a draft and leaves a started workout in place', async () => {
+    localStorage.clear();
+    localStorage.setItem(STARTED_WORKOUT_KEY, 'started-1');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/api/v1/muscles')) {
+          return jsonResponse({
+            data: [
+              {
+                id: 'm-1',
+                slug: 'chest',
+                name: 'Chest',
+                anatomicalRegion: 'Upper body',
+                exerciseCount: 1,
+              },
+            ],
+          });
+        }
+        if (init?.method === 'POST') {
+          return jsonResponse({ data: { id: 'workout-9' } }, true, 201);
+        }
+        return jsonResponse({
+          data: {
+            rationale: 'A chest session.',
+            estimatedMinutes: 25,
+            rounds: 1,
+            warmups: [],
+            muscle: { id: 'm-1', slug: 'chest', name: 'Chest' },
+            goal: 'general_fitness',
+            experience: 'beginner',
+            equipmentCategories: ['free_weight', 'machine', 'bodyweight'],
+            exercises: [slot(pushUp)],
+          },
+        });
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/workouts/new']}>
+        <Routes>
+          <Route path="/workouts/new" element={<WorkoutBuilderPage />} />
+          <Route path="/workouts/:id" element={<p>Saved draft</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Build workout' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Save workout' }));
+    expect(await screen.findByText('Saved draft')).toBeInTheDocument();
+    expect(localStorage.getItem(DRAFT_WORKOUT_KEY)).toBe('workout-9');
+    expect(localStorage.getItem(STARTED_WORKOUT_KEY)).toBe('started-1');
   });
 });
