@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: home-workout-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: homeworkout
+      POSTGRES_PASSWORD: homeworkout
+      POSTGRES_DB: homeworkout
+    ports:
+      - "5432:5432"
+    volumes:
+      - home_workout_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U homeworkout -d homeworkout"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  home_workout_pg:

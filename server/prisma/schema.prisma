@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model MuscleGroup {
+  id               String          @id @default(cuid())
+  slug             String          @unique
+  name             String
+  anatomicalRegion String
+  sortOrder        Int
+  exercises        ExerciseMuscle[]
+  stretches        StretchMuscle[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  @@index([anatomicalRegion])
+}
+
+model Equipment {
+  id        String              @id @default(cuid())
+  slug      String              @unique
+  name      String
+  category  EquipmentCategory
+  exercises ExerciseEquipment[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@index([category])
+}
+
+model Exercise {
+  id           String              @id @default(cuid())
+  slug         String              @unique
+  name         String
+  description  String
+  instructions String
+  difficulty   Difficulty
+  movementType MovementType
+  muscles      ExerciseMuscle[]
+  equipment    ExerciseEquipment[]
+  stretches    ExerciseStretch[]
+  animations   AnimationAsset[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([difficulty])
+  @@index([name])
+}
+
+model ExerciseMuscle {
+  exerciseId String
+  muscleId   String
+  role       MuscleRole
+  exercise   Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  muscle     MuscleGroup @relation(fields: [muscleId], references: [id], onDelete: Cascade)
+
+  @@id([exerciseId, muscleId])
+  @@index([muscleId])
+}
+
+model ExerciseEquipment {
+  exerciseId  String
+  equipmentId String
+  exercise    Exercise  @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  equipment   Equipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@id([exerciseId, equipmentId])
+  @@index([equipmentId])
+}
+
+model Stretch {
+  id              String            @id @default(cuid())
+  slug            String            @unique
+  name            String
+  instructions    String
+  durationSeconds Int
+  muscles         StretchMuscle[]
+  exercises       ExerciseStretch[]
+  animations      AnimationAsset[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model StretchMuscle {
+  stretchId String
+  muscleId  String
+  stretch   Stretch     @relation(fields: [stretchId], references: [id], onDelete: Cascade)
+  muscle    MuscleGroup @relation(fields: [muscleId], references: [id], onDelete: Cascade)
+
+  @@id([stretchId, muscleId])
+}
+
+model ExerciseStretch {
+  exerciseId String
+  stretchId  String
+  relevance  String
+  exercise   Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  stretch    Stretch  @relation(fields: [stretchId], references: [id], onDelete: Cascade)
+
+  @@id([exerciseId, stretchId])
+}
+
+model AnimationAsset {
+  id           String          @id @default(cuid())
+  exerciseId   String?
+  stretchId    String?
+  assetUrl     String
+  format       AnimationFormat
+  reviewStatus ReviewStatus    @default(draft)
+  exercise     Exercise?       @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  stretch      Stretch?        @relation(fields: [stretchId], references: [id], onDelete: Cascade)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([exerciseId])
+  @@index([stretchId])
+}
+
+enum EquipmentCategory {
+  free_weight
+  machine
+  bodyweight
+}
+
+enum Difficulty {
+  beginner
+  intermediate
+  advanced
+}
+
+enum MuscleRole {
+  primary
+  secondary
+}
+
+enum MovementType {
+  compound
+  isolation
+  isometric
+}
+
+enum AnimationFormat {
+  lottie
+  video
+  image
+}
+
+enum ReviewStatus {
+  draft
+  approved
+}

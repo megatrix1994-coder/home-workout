@@ -1,0 +1,74 @@
+import { render, screen } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ExerciseDetailPage } from './ExerciseDetailPage';
+
+function jsonResponse(body: unknown, ok = true, status = 200) {
+  return { ok, status, json: async () => body };
+}
+
+describe('ExerciseDetailPage', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows instructions, equipment, and target muscles', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          data: {
+            id: 'ex-2',
+            slug: 'dumbbell-row',
+            name: 'Dumbbell row',
+            description: 'A one-arm free-weight row.',
+            instructions: 'Setup: Support one hand on a bench.\n1. Pull toward the hip.',
+            difficulty: 'intermediate',
+            movementType: 'compound',
+            muscles: [
+              { slug: 'back', name: 'Back', role: 'primary' },
+              { slug: 'biceps', name: 'Biceps', role: 'secondary' },
+            ],
+            equipment: [{ slug: 'dumbbell', name: 'Dumbbell', category: 'free_weight' }],
+          },
+        }),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/exercises/dumbbell-row']}>
+        <Routes>
+          <Route path="/exercises/:slug" element={<ExerciseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading exercise…');
+    expect(await screen.findByRole('heading', { name: 'Dumbbell row' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Equipment' }).closest('section')).toHaveTextContent(
+      'Dumbbell (Free weight)',
+    );
+    expect(screen.getByRole('link', { name: 'Back' })).toHaveAttribute(
+      'href',
+      '/exercises?muscle=back',
+    );
+    expect(screen.getByText(/Setup: Support one hand on a bench./)).toBeInTheDocument();
+  });
+
+  it('shows a not-found state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(jsonResponse({ error: { message: 'Exercise not found.' } }, false, 404)),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/exercises/missing']}>
+        <Routes>
+          <Route path="/exercises/:slug" element={<ExerciseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Exercise not found' })).toBeInTheDocument();
+  });
+});
