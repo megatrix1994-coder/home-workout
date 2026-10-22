@@ -20,9 +20,12 @@ export function useApi<T>(path: string) {
           error?: { message?: string };
         } | null;
         if (!response.ok) {
-          throw Object.assign(new Error(body?.error?.message ?? 'Could not load this page.'), {
-            statusCode: response.status,
-          });
+          throw Object.assign(
+            new Error(body?.error?.message ?? 'Could not load this page.'),
+            {
+              statusCode: response.status,
+            },
+          );
         }
         return body as T;
       })
@@ -32,7 +35,10 @@ export function useApi<T>(path: string) {
         }
       })
       .catch((error: unknown) => {
-        if (!active || (error instanceof DOMException && error.name === 'AbortError')) {
+        if (
+          !active ||
+          (error instanceof DOMException && error.name === 'AbortError')
+        ) {
           return;
         }
         const statusCode =
@@ -41,7 +47,10 @@ export function useApi<T>(path: string) {
             : undefined;
         setState({
           status: 'error',
-          message: error instanceof Error ? error.message : 'Could not load this page.',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Could not load this page.',
           statusCode,
         });
       });
@@ -56,4 +65,29 @@ export function useApi<T>(path: string) {
     ...state,
     retry: () => setAttempt((value) => value + 1),
   };
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...init?.headers,
+    },
+  });
+  const body = (await response.json().catch(() => null)) as {
+    error?: { message?: string };
+  } | null;
+  if (!response.ok) {
+    throw Object.assign(
+      new Error(body?.error?.message ?? 'Could not complete this request.'),
+      {
+        statusCode: response.status,
+      },
+    );
+  }
+  return body as T;
 }

@@ -10,7 +10,25 @@ export function asyncHandler(
   };
 }
 
-export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
+function isDatabaseUnavailable(error: unknown) {
+  if (typeof error !== 'object' || error === null) {
+    return false;
+  }
+  const name = 'name' in error ? String(error.name) : '';
+  const code = 'code' in error ? String(error.code) : '';
+  return (
+    name === 'PrismaClientInitializationError' ||
+    code === 'P1001' ||
+    code === 'P1017'
+  );
+}
+
+export function errorHandler(
+  error: unknown,
+  _req: Request,
+  res: Response,
+  _next: NextFunction,
+) {
   if (error instanceof ZodError) {
     res.status(400).json({
       error: {
@@ -28,6 +46,16 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
         code: error.code,
         message: error.message,
         ...(error.details !== undefined ? { details: error.details } : {}),
+      },
+    });
+    return;
+  }
+
+  if (isDatabaseUnavailable(error)) {
+    res.status(503).json({
+      error: {
+        code: 'DATABASE_UNAVAILABLE',
+        message: 'The database is unavailable. Start it, then try again.',
       },
     });
     return;

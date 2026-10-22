@@ -1,6 +1,13 @@
 import { Link, useParams } from 'react-router-dom';
 import { useApi } from '../api';
-import { labelDifficulty, labelEquipmentCategory, labelMovement, labelRole } from '../labels';
+import {
+  labelDifficulty,
+  labelEquipmentCategory,
+  labelExperience,
+  labelGoal,
+  labelMovement,
+  labelRole,
+} from '../labels';
 import { ErrorState, LoadingState } from '../components/Status';
 import type { ExerciseDetail, ItemResponse } from '../types';
 
@@ -30,7 +37,9 @@ export function ExerciseDetailPage() {
         All exercises
       </Link>
       <p className="mt-4 text-sm font-semibold uppercase tracking-[0.16em] text-accent">
-        {labelDifficulty(exercise.difficulty)} · {labelMovement(exercise.movementType)}
+        {labelDifficulty(exercise.difficulty)}
+        {exercise.goals[0] ? ` · ${labelGoal(exercise.goals[0])}` : ''} ·{' '}
+        {labelMovement(exercise.movementType)}
       </p>
       <h1 className="mt-2 font-display text-5xl font-semibold leading-none">{exercise.name}</h1>
       <p className="mt-4 max-w-2xl text-lg text-muted">{exercise.description}</p>
@@ -61,6 +70,20 @@ export function ExerciseDetailPage() {
           </ul>
         </section>
       </div>
+
+      {exercise.progression && exercise.progression.length > 0 ? (
+        <section className="mt-4 rounded-2xl border border-line bg-card p-5">
+          <h2 className="font-display text-2xl font-semibold">Progressive overload</h2>
+          <ul className="mt-3 space-y-3">
+            {exercise.progression.map((step) => (
+              <li key={step.experience}>
+                <p className="text-sm font-semibold">{labelExperience(step.experience)}</p>
+                <p className="mt-1 leading-7">{step.summary}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       <section className="mt-4 rounded-2xl border border-line bg-card p-5">
         <h2 className="font-display text-2xl font-semibold">Instructions</h2>

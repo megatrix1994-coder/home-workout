@@ -1,5 +1,10 @@
-import { PrismaClient, type EquipmentCategory, type MuscleRole } from '@prisma/client';
+import {
+  PrismaClient,
+  type EquipmentCategory,
+  type MuscleRole,
+} from '@prisma/client';
 import { equipment, exercises, muscleGroups } from '../src/catalogue';
+import { warmups } from '../src/warmups';
 
 const prisma = new PrismaClient();
 
@@ -43,7 +48,9 @@ async function main() {
   const muscles = await prisma.muscleGroup.findMany();
   const equipmentRows = await prisma.equipment.findMany();
   const muscleBySlug = new Map(muscles.map((muscle) => [muscle.slug, muscle]));
-  const equipmentBySlug = new Map(equipmentRows.map((item) => [item.slug, item]));
+  const equipmentBySlug = new Map(
+    equipmentRows.map((item) => [item.slug, item]),
+  );
 
   for (const exercise of exercises) {
     const saved = await prisma.exercise.upsert({
@@ -54,6 +61,8 @@ async function main() {
         instructions: exercise.instructions,
         difficulty: exercise.difficulty,
         movementType: exercise.movementType,
+        region: exercise.region,
+        goals: [exercise.goal],
       },
       create: {
         slug: exercise.slug,
@@ -62,11 +71,15 @@ async function main() {
         instructions: exercise.instructions,
         difficulty: exercise.difficulty,
         movementType: exercise.movementType,
+        region: exercise.region,
+        goals: [exercise.goal],
       },
     });
 
     await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: saved.id } });
-    await prisma.exerciseEquipment.deleteMany({ where: { exerciseId: saved.id } });
+    await prisma.exerciseEquipment.deleteMany({
+      where: { exerciseId: saved.id },
+    });
 
     await prisma.exerciseMuscle.createMany({
       data: exercise.muscles.map((muscle) => {
@@ -89,6 +102,40 @@ async function main() {
           throw new Error(`Unknown equipment slug: ${slug}`);
         }
         return { exerciseId: saved.id, equipmentId: row.id };
+      }),
+    });
+  }
+
+  await prisma.stretch.deleteMany({
+    where: { slug: { notIn: warmups.map((stretch) => stretch.slug) } },
+  });
+
+  for (const stretch of warmups) {
+    const saved = await prisma.stretch.upsert({
+      where: { slug: stretch.slug },
+      update: {
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'warmup',
+      },
+      create: {
+        slug: stretch.slug,
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'warmup',
+      },
+    });
+
+    await prisma.stretchMuscle.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.stretchMuscle.createMany({
+      data: stretch.muscles.map((slug) => {
+        const row = muscleBySlug.get(slug);
+        if (!row) {
+          throw new Error(`Unknown muscle slug: ${slug}`);
+        }
+        return { stretchId: saved.id, muscleId: row.id };
       }),
     });
   }

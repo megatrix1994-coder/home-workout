@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { buildExerciseWhere, exerciseListQuerySchema } from '../lib/exercise-query.js';
 import { HttpError } from '../lib/http.js';
+import { progressionCycle } from '../lib/progression.js';
+import type { TrainingGoal } from '../lib/recommend.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 
 const exerciseInclude = {
@@ -29,6 +31,8 @@ function serializeExercise(exercise: ExerciseRecord, includeInstructions: boolea
     name: exercise.name,
     difficulty: exercise.difficulty,
     movementType: exercise.movementType,
+    region: exercise.region,
+    goals: exercise.goals ?? [],
     ...(includeInstructions
       ? { description: exercise.description, instructions: exercise.instructions }
       : {}),
@@ -44,7 +48,22 @@ function serializeExercise(exercise: ExerciseRecord, includeInstructions: boolea
         category: item.equipment.category,
       }))
       .sort((left, right) => left.name.localeCompare(right.name)),
+    ...(includeInstructions ? { progression: progressionFor(exercise) } : {}),
   };
+}
+
+function progressionFor(exercise: ExerciseRecord) {
+  const goal = exercise.goals?.[0] as TrainingGoal | undefined;
+  if (!goal) {
+    return [];
+  }
+  return progressionCycle({
+    goal,
+    movementType: exercise.movementType,
+    bodyweightOnly: exercise.equipment.every(
+      (item) => item.equipment.category === 'bodyweight',
+    ),
+  });
 }
 
 export const exercisesRouter = Router();

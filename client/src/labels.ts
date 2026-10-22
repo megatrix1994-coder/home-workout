@@ -1,4 +1,11 @@
-import type { Difficulty, EquipmentCategory, MovementType, MuscleRole } from './types';
+import type {
+  Difficulty,
+  EquipmentCategory,
+  ExperienceLevel,
+  MovementType,
+  MuscleRole,
+  TrainingGoal,
+} from './types';
 
 const difficultyLabels: Record<Difficulty, string> = {
   beginner: 'Beginner',
@@ -37,4 +44,63 @@ export function labelEquipmentCategory(value: EquipmentCategory) {
 
 export function labelRole(value: MuscleRole) {
   return roleLabels[value];
+}
+
+const goalLabels: Record<TrainingGoal, string> = {
+  strength: 'Strength',
+  hypertrophy: 'Muscle growth',
+  general_fitness: 'General fitness',
+  endurance: 'Endurance',
+};
+
+const experienceLabels: Record<ExperienceLevel, string> = {
+  beginner: 'Beginner',
+  intermediate: 'Intermediate',
+  advanced: 'Advanced',
+};
+
+export function labelGoal(value: TrainingGoal) {
+  return goalLabels[value];
+}
+
+export function labelExperience(value: ExperienceLevel) {
+  return experienceLabels[value];
+}
+
+const regionLabels: Record<string, string> = {
+  mid: 'Middle chest',
+  upper: 'Upper chest',
+  lower: 'Lower chest',
+  pecs: 'Pecs',
+  lats: 'Lats',
+  'mid-back': 'Mid-back',
+  'upper-back': 'Upper back',
+  'lower-back': 'Lower back',
+  overall: 'Overall curl',
+  'short-head': 'Short head',
+  'long-head': 'Long head',
+  brachialis: 'Brachialis',
+  'lateral-head': 'Lateral head',
+  'medial-head': 'Medial head',
+  flexors: 'Flexors',
+  extensors: 'Extensors',
+  squat: 'Squat',
+  'single-leg': 'Single-leg',
+  'knee-extension': 'Knee extension',
+  'hip-hinge': 'Hip hinge',
+  'knee-flexion': 'Knee flexion',
+  thrust: 'Thrust',
+  kickback: 'Kickback',
+  standing: 'Standing',
+  seated: 'Seated',
+  'front-delt': 'Front',
+  'side-delt': 'Side',
+  'rear-delt': 'Rear',
+  abdominals: 'Front',
+  obliques: 'Obliques',
+  brace: 'Brace',
+};
+
+export function labelRegion(region: string) {
+  return regionLabels[region] ?? region;
 }

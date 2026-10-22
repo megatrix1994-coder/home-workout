@@ -15,6 +15,7 @@ model MuscleGroup {
   sortOrder        Int
   exercises        ExerciseMuscle[]
   stretches        StretchMuscle[]
+  workouts         WorkoutPlan[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
@@ -41,12 +42,15 @@ model Exercise {
   instructions String
   difficulty   Difficulty
   movementType MovementType
-  muscles      ExerciseMuscle[]
-  equipment    ExerciseEquipment[]
-  stretches    ExerciseStretch[]
-  animations   AnimationAsset[]
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  region       String
+  goals        TrainingGoal[]
+  muscles          ExerciseMuscle[]
+  equipment        ExerciseEquipment[]
+  stretches        ExerciseStretch[]
+  animations       AnimationAsset[]
+  workoutExercises WorkoutExercise[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
   @@index([difficulty])
   @@index([name])
@@ -79,9 +83,11 @@ model Stretch {
   name            String
   instructions    String
   durationSeconds Int
+  purpose         StretchPurpose    @default(warmup)
   muscles         StretchMuscle[]
   exercises       ExerciseStretch[]
   animations      AnimationAsset[]
+  warmups         WorkoutWarmup[]
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 }
@@ -121,10 +127,101 @@ model AnimationAsset {
   @@index([stretchId])
 }
 
+model WorkoutPlan {
+  id                  String             @id @default(cuid())
+  muscleId            String
+  goal                TrainingGoal
+  experience          ExperienceLevel
+  equipmentCategories EquipmentCategory[]
+  rationale           String
+  estimatedMinutes    Int                @default(0)
+  rounds              Int                @default(1)
+  status              WorkoutStatus      @default(draft)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  muscle              MuscleGroup        @relation(fields: [muscleId], references: [id], onDelete: Restrict)
+  exercises           WorkoutExercise[]
+  warmups             WorkoutWarmup[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([muscleId])
+  @@index([status])
+}
+
+model WorkoutExercise {
+  id          String      @id @default(cuid())
+  workoutId   String
+  exerciseId  String
+  order       Int
+  sets        Int
+  reps        String
+  restSeconds Int
+  reason      String
+  workout     WorkoutPlan @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise    Exercise    @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  setLogs     WorkoutSetLog[]
+
+  @@unique([workoutId, order])
+  @@unique([workoutId, exerciseId])
+  @@index([exerciseId])
+}
+
+model WorkoutWarmup {
+  id              String      @id @default(cuid())
+  workoutId       String
+  stretchId       String
+  order           Int
+  durationSeconds Int
+  workout         WorkoutPlan @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  stretch         Stretch     @relation(fields: [stretchId], references: [id], onDelete: Cascade)
+
+  @@unique([workoutId, order])
+  @@unique([workoutId, stretchId])
+  @@index([stretchId])
+}
+
+enum StretchPurpose {
+  warmup
+}
+
 enum EquipmentCategory {
   free_weight
   machine
   bodyweight
+}
+
+enum TrainingGoal {
+  strength
+  hypertrophy
+  general_fitness
+  endurance
+}
+
+enum ExperienceLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum WorkoutStatus {
+  draft
+  started
+  completed
+}
+
+model WorkoutSetLog {
+  id                String          @id @default(cuid())
+  workoutExerciseId String
+  round             Int
+  setNumber         Int
+  repsCompleted     Int
+  weightKg          Float?
+  workoutExercise   WorkoutExercise @relation(fields: [workoutExerciseId], references: [id], onDelete: Cascade)
+  createdAt         DateTime        @default(now())
+
+  @@unique([workoutExerciseId, round, setNumber])
+  @@index([workoutExerciseId])
 }
 
 enum Difficulty {

@@ -10,6 +10,8 @@ const chestPress = {
   name: 'Chest press',
   difficulty: 'beginner',
   movementType: 'compound',
+  region: 'mid',
+  goals: ['strength'],
   muscles: [
     { slug: 'chest', name: 'Chest', role: 'primary' },
     { slug: 'triceps', name: 'Triceps', role: 'secondary' },
@@ -25,6 +27,8 @@ const dumbbellRow = {
   name: 'Dumbbell row',
   difficulty: 'intermediate',
   movementType: 'compound',
+  region: 'lats',
+  goals: ['hypertrophy'],
   muscles: [
     { slug: 'back', name: 'Back', role: 'primary' },
     { slug: 'biceps', name: 'Biceps', role: 'secondary' },
@@ -79,12 +83,19 @@ describe('ExercisesPage', () => {
     );
 
     expect(await screen.findByRole('link', { name: /Dumbbell row/ })).toBeInTheDocument();
+    expect(screen.getByText(/Intermediate · Muscle growth/)).toBeInTheDocument();
     expect(screen.getByText(/Dumbbell \(Free weight\)/)).toBeInTheDocument();
-    expect(screen.getByText(/Back \(Primary\), Biceps \(Secondary\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Back \(Primary\), Biceps \(Secondary\) · Lats/)).toBeInTheDocument();
     expect(screen.getByText(/Chest press machine \(Machine\)/)).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText('Equipment'), 'machine');
-    expect(await screen.findByText('1 exercise')).toBeInTheDocument();
+    expect(await screen.findByText('1–1 of 1 exercise')).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText('Goal'), 'strength');
+    expect(await screen.findByText('1–1 of 1 exercise')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('goal=strength'),
+      expect.anything(),
+    );
     expect(screen.queryByRole('link', { name: /Dumbbell row/ })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Chest press/ })).toHaveAttribute(
       'href',
@@ -145,5 +156,44 @@ describe('ExercisesPage', () => {
     );
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Catalogue unavailable.');
+  });
+
+  it('loads the next page of exercises', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/v1/muscles')) {
+        return jsonResponse({ data: [] });
+      }
+      if (url.includes('offset=100')) {
+        return jsonResponse({
+          data: [dumbbellRow],
+          meta: { total: 101, limit: 100, offset: 100 },
+        });
+      }
+      return jsonResponse({
+        data: [chestPress],
+        meta: { total: 101, limit: 100, offset: 0 },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/exercises']}>
+        <Routes>
+          <Route path="/exercises" element={<ExercisesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('link', { name: /Chest press/ })).toBeInTheDocument();
+    expect(screen.getByText('1–1 of 101 exercises')).toBeInTheDocument();
+    expect(screen.getByText(/Beginner · Strength/)).toBeInTheDocument();
+    expect(screen.getByText(/Middle chest/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByRole('link', { name: /Dumbbell row/ })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('offset=100'),
+      expect.anything(),
+    );
   });
 });

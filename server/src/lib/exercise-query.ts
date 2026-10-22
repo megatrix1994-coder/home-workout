@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 
 export const equipmentCategories = ['free_weight', 'machine', 'bodyweight'] as const;
+const difficulties = ['beginner', 'intermediate', 'advanced'] as const;
+const trainingGoals = ['strength', 'hypertrophy', 'general_fitness', 'endurance'] as const;
 
 const blankToUndefined = (value: unknown) =>
   typeof value === 'string' && value.trim() === '' ? undefined : value;
@@ -20,8 +22,10 @@ export const exerciseListQuerySchema = z.object({
     blankToUndefined,
     z.enum(equipmentCategories).optional(),
   ),
+  difficulty: z.preprocess(blankToUndefined, z.enum(difficulties).optional()),
+  goal: z.preprocess(blankToUndefined, z.enum(trainingGoals).optional()),
   limit: z.preprocess(
-    (value) => (value === undefined || value === '' ? 50 : value),
+    (value) => (value === undefined || value === '' ? 100 : value),
     z.coerce.number().int().min(1).max(100),
   ),
   offset: z.preprocess(
@@ -45,6 +49,14 @@ export function buildExerciseWhere(query: ExerciseListQuery): Prisma.ExerciseWhe
 
   if (query.equipmentCategory) {
     where.equipment = { some: { equipment: { category: query.equipmentCategory } } };
+  }
+
+  if (query.difficulty) {
+    where.difficulty = query.difficulty;
+  }
+
+  if (query.goal) {
+    where.goals = { has: query.goal };
   }
 
   return where;

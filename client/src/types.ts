@@ -2,6 +2,10 @@ export type MuscleRole = 'primary' | 'secondary';
 export type EquipmentCategory = 'free_weight' | 'machine' | 'bodyweight';
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced';
 export type MovementType = 'compound' | 'isolation' | 'isometric';
+export type TrainingGoal =
+  'strength' | 'hypertrophy' | 'general_fitness' | 'endurance';
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type WorkoutStatus = 'draft' | 'started' | 'completed';
 
 export type MuscleGroup = {
   id: string;
@@ -29,13 +33,32 @@ export type ExerciseSummary = {
   name: string;
   difficulty: Difficulty;
   movementType: MovementType;
+  region?: string;
+  goals: TrainingGoal[];
   muscles: ExerciseMuscle[];
   equipment: ExerciseEquipment[];
+};
+
+export type ProgressionStep = {
+  experience: ExperienceLevel;
+  cleanReps: number;
+  jumpKg: number;
+  summary: string;
+};
+
+export type ExerciseProgression = {
+  cleanReps: number;
+  jumpKg: number;
+  suggestedWeightKg: number | null;
+  earned: boolean | null;
+  summary: string;
+  outcome: string | null;
 };
 
 export type ExerciseDetail = ExerciseSummary & {
   description: string;
   instructions: string;
+  progression?: ProgressionStep[];
 };
 
 export type ListResponse<T> = {
@@ -45,4 +68,74 @@ export type ListResponse<T> = {
 
 export type ItemResponse<T> = {
   data: T;
+};
+
+export type WorkoutAlternative = {
+  exercise: ExerciseDetail;
+  reason: string;
+};
+
+export type WorkoutSlot = {
+  exercise: ExerciseDetail;
+  sets: number;
+  reps: string;
+  restSeconds: number;
+  reason: string;
+  alternatives: WorkoutAlternative[];
+};
+
+export type WarmupStretch = {
+  id: string;
+  slug: string;
+  name: string;
+  instructions: string;
+  durationSeconds: number;
+};
+
+export type WorkoutRecommendation = {
+  rationale: string;
+  estimatedMinutes: number;
+  rounds: number;
+  muscle: { id: string; slug: string; name: string } | null;
+  goal: TrainingGoal;
+  experience: ExperienceLevel;
+  equipmentCategories: EquipmentCategory[];
+  warmups: WarmupStretch[];
+  exercises: WorkoutSlot[];
+};
+
+export type WorkoutSetLog = {
+  id: string;
+  round: number;
+  setNumber: number;
+  repsCompleted: number;
+  weightKg: number | null;
+};
+
+export type WorkoutPlan = {
+  id: string;
+  status: WorkoutStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  goal: TrainingGoal;
+  experience: ExperienceLevel;
+  equipmentCategories: EquipmentCategory[];
+  rationale: string;
+  estimatedMinutes: number;
+  rounds: number;
+  muscle: { id: string; slug: string; name: string };
+  warmups: Array<{
+    id: string;
+    order: number;
+    durationSeconds: number;
+    stretch: WarmupStretch;
+  }>;
+  exercises: Array<
+    WorkoutSlot & {
+      id: string;
+      order: number;
+      setLogs: WorkoutSetLog[];
+      progression?: ExerciseProgression;
+    }
+  >;
 };

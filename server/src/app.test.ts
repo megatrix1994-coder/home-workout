@@ -1,14 +1,17 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { findManyMuscles, findManyExercises, countExercises, findFirstExercise } = vi.hoisted(
-  () => ({
-    findManyMuscles: vi.fn(),
-    findManyExercises: vi.fn(),
-    countExercises: vi.fn(),
-    findFirstExercise: vi.fn(),
-  }),
-);
+const {
+  findManyMuscles,
+  findManyExercises,
+  countExercises,
+  findFirstExercise,
+} = vi.hoisted(() => ({
+  findManyMuscles: vi.fn(),
+  findManyExercises: vi.fn(),
+  countExercises: vi.fn(),
+  findFirstExercise: vi.fn(),
+}));
 
 vi.mock('./db', () => ({
   prisma: {
@@ -30,9 +33,12 @@ const chestPress = {
   slug: 'machine-chest-press',
   name: 'Chest press',
   description: 'A machine press.',
-  instructions: 'Setup: Sit tall.\n1. Press.\nBreathing: Exhale.\nCommon mistakes: Shrugging.',
+  instructions:
+    'Setup: Sit tall.\n1. Press.\nBreathing: Exhale.\nCommon mistakes: Shrugging.',
   difficulty: 'beginner',
   movementType: 'compound',
+  region: 'mid',
+  goals: ['strength'],
   muscles: [
     {
       role: 'secondary',
@@ -97,12 +103,17 @@ describe('catalogue API', () => {
     expect(response.status).toBe(200);
     expect(response.body.data[0]).toMatchObject({
       name: 'Chest press',
+      goals: ['strength'],
       muscles: [
         { slug: 'chest', name: 'Chest', role: 'primary' },
         { slug: 'triceps', name: 'Triceps', role: 'secondary' },
       ],
       equipment: [
-        { slug: 'chest-press-machine', name: 'Chest press machine', category: 'machine' },
+        {
+          slug: 'chest-press-machine',
+          name: 'Chest press machine',
+          category: 'machine',
+        },
       ],
     });
     expect(response.body.data[0].instructions).toBeUndefined();
@@ -115,13 +126,15 @@ describe('catalogue API', () => {
         },
         orderBy: { name: 'asc' },
         skip: 0,
-        take: 50,
+        take: 100,
       }),
     );
   });
 
   it('rejects an invalid equipment category', async () => {
-    const response = await request(app).get('/api/v1/exercises?equipmentCategory=kettlebell');
+    const response = await request(app).get(
+      '/api/v1/exercises?equipmentCategory=kettlebell',
+    );
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(findManyExercises).not.toHaveBeenCalled();
@@ -130,14 +143,28 @@ describe('catalogue API', () => {
   it('returns an exercise detail by slug', async () => {
     findFirstExercise.mockResolvedValue(chestPress);
 
-    const response = await request(app).get('/api/v1/exercises/machine-chest-press');
+    const response = await request(app).get(
+      '/api/v1/exercises/machine-chest-press',
+    );
 
     expect(response.status).toBe(200);
     expect(response.body.data.instructions).toContain('Setup:');
     expect(response.body.data.equipment[0].name).toBe('Chest press machine');
+    expect(response.body.data.progression).toEqual([
+      expect.objectContaining({
+        experience: 'beginner',
+        cleanReps: 5,
+        jumpKg: 1,
+        summary: 'When every set reaches 5 clean reps, add 1 kg next time.',
+      }),
+      expect.objectContaining({ experience: 'intermediate', cleanReps: 5, jumpKg: 2.5 }),
+      expect.objectContaining({ experience: 'advanced', cleanReps: 5, jumpKg: 5 }),
+    ]);
     expect(findFirstExercise).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { OR: [{ id: 'machine-chest-press' }, { slug: 'machine-chest-press' }] },
+        where: {
+          OR: [{ id: 'machine-chest-press' }, { slug: 'machine-chest-press' }],
+        },
       }),
     );
   });
@@ -157,5 +184,19 @@ describe('catalogue API', () => {
     const response = await request(app).get('/api/v1/muscles');
     expect(response.status).toBe(500);
     expect(response.body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('returns 503 when the database cannot be reached', async () => {
+    const error = new Error("Can't reach database server at `localhost:51214`");
+    error.name = 'PrismaClientInitializationError';
+    findManyMuscles.mockRejectedValue(error);
+
+    const response = await request(app).get('/api/v1/muscles');
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toEqual({
+      code: 'DATABASE_UNAVAILABLE',
+      message: 'The database is unavailable. Start it, then try again.',
+    });
   });
 });

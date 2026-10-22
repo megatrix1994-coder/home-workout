@@ -15,7 +15,7 @@ describe('exercise list query', () => {
       search: undefined,
       muscle: undefined,
       equipmentCategory: undefined,
-      limit: 50,
+      limit: 100,
       offset: 0,
     });
     expect(buildExerciseWhere(query)).toEqual({});
@@ -41,6 +41,17 @@ describe('exercise list query', () => {
     const query = exerciseListQuerySchema.parse({ equipmentCategory: 'machine' });
     expect(buildExerciseWhere(query)).toEqual({
       equipment: { some: { equipment: { category: 'machine' } } },
+    });
+  });
+
+  it('filters by difficulty and goal', () => {
+    const query = exerciseListQuerySchema.parse({
+      difficulty: 'beginner',
+      goal: 'strength',
+    });
+    expect(buildExerciseWhere(query)).toEqual({
+      difficulty: 'beginner',
+      goals: { has: 'strength' },
     });
   });
 
