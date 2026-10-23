@@ -171,9 +171,9 @@ Delivered: authorization review. Every workout route checks the owner, sessions 
 Delivered: server, client, and Playwright tests for the full journey, media fallback, reduced motion, accessibility on desktop and phone, and the admin and privacy flow.
 Delivered: a production build served on one port, a Dockerfile, docker-compose.prod.yml, and documented environment variables.
 Verified locally: the production build on port 8080 passed every Playwright suite, including after cross-site writes were made strict (a write must carry the app's own Origin, or Sec-Fetch-Site same-origin).
-Delivered: GitHub Actions runs lint, unit tests, the build, the audit, and the Playwright suites against the Docker production stack.
+Delivered: GitHub Actions runs lint, unit tests, the build, the audit, and the Playwright suites against the Docker production stack. The first run (commit a10520f) passed both jobs, so the container image builds, migrates, seeds, and passes every end-to-end test.
 Delivered: automated content checks in server/src/content.test.ts. They found 18 cooldown stretches without a pain warning; every cooldown now ends with "Ease off at once if you feel pain, numbness, or tingling."
-Open: run the Docker image locally. Docker Desktop is installed and waits for a Windows restart.
+Open: run the Docker image on this machine as well. Docker Desktop is installed and waits for a Windows restart.
 Open: deploy to a hosted test environment over HTTPS.
 Open: awaiting qualified review. The sheets in content-review/ (exercises, warm-ups, cooldowns, nutrition) are ready for a trainer and a nutritionist. No review has taken place yet.
 
