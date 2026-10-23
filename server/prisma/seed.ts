@@ -1,10 +1,20 @@
+import 'dotenv/config';
 import {
   PrismaClient,
+  type Allergen,
+  type BudgetBand,
+  type DietPattern,
   type EquipmentCategory,
+  type FoodRegion,
+  type MealEmphasis,
+  type MealTiming,
   type MuscleRole,
+  type NutrientName,
 } from '@prisma/client';
 import { equipment, exercises, muscleGroups } from '../src/catalogue';
 import { cooldowns } from '../src/cooldowns';
+import { publishNutrients } from '../src/lib/nutrition';
+import { foods, meals } from '../src/nutrition';
 import { warmups } from '../src/warmups';
 
 const prisma = new PrismaClient();
@@ -192,6 +202,88 @@ async function main() {
       },
     });
   }
+
+  const foodIds = new Map<string, string>();
+  for (const food of foods) {
+    const saved = await prisma.food.upsert({
+      where: { slug: food.slug },
+      update: {
+        name: food.name,
+        region: food.region as FoodRegion,
+        servingSize: food.servingSize,
+        preparation: food.preparation,
+        allergens: food.allergens as Allergen[],
+        diets: food.diets as DietPattern[],
+      },
+      create: {
+        slug: food.slug,
+        name: food.name,
+        region: food.region as FoodRegion,
+        servingSize: food.servingSize,
+        preparation: food.preparation,
+        allergens: food.allergens as Allergen[],
+        diets: food.diets as DietPattern[],
+      },
+    });
+    foodIds.set(food.slug, saved.id);
+
+    await prisma.foodNutrient.deleteMany({ where: { foodId: saved.id } });
+    const nutrients = publishNutrients(food.nutrients);
+    if (nutrients.length > 0) {
+      await prisma.foodNutrient.createMany({
+        data: nutrients.map((row) => ({
+          foodId: saved.id,
+          nutrient: row.nutrient as NutrientName,
+          amount: row.amount,
+          unit: row.unit,
+          sourceName: row.sourceName,
+        })),
+      });
+    }
+  }
+
+  for (const meal of meals) {
+    const saved = await prisma.meal.upsert({
+      where: { slug: meal.slug },
+      update: {
+        name: meal.name,
+        timing: meal.timing as MealTiming,
+        region: meal.region as FoodRegion,
+        rationale: meal.rationale,
+        prepMinutes: meal.prepMinutes,
+        budget: meal.budget as BudgetBand,
+        emphasis: meal.emphasis as MealEmphasis,
+      },
+      create: {
+        slug: meal.slug,
+        name: meal.name,
+        timing: meal.timing as MealTiming,
+        region: meal.region as FoodRegion,
+        rationale: meal.rationale,
+        prepMinutes: meal.prepMinutes,
+        budget: meal.budget as BudgetBand,
+        emphasis: meal.emphasis as MealEmphasis,
+      },
+    });
+
+    await prisma.mealFood.deleteMany({ where: { mealId: saved.id } });
+    await prisma.mealFood.createMany({
+      data: meal.foods.map((slug, order) => {
+        const foodId = foodIds.get(slug);
+        if (!foodId) {
+          throw new Error(`Unknown food slug: ${slug}`);
+        }
+        return { mealId: saved.id, foodId, order };
+      }),
+    });
+  }
+
+  await prisma.meal.deleteMany({
+    where: { slug: { notIn: meals.map((meal) => meal.slug) } },
+  });
+  await prisma.food.deleteMany({
+    where: { slug: { notIn: foods.map((food) => food.slug) } },
+  });
 }
 
 main()

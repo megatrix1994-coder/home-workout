@@ -306,4 +306,100 @@ describe('WorkoutBuilderPage', () => {
     expect(localStorage.getItem(DRAFT_WORKOUT_KEY)).toBe('workout-9');
     expect(localStorage.getItem(STARTED_WORKOUT_KEY)).toBe('started-1');
   });
+
+  it('starts a cut on strength and a standard session, then lists easier exercises', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/muscles')) {
+          return jsonResponse({
+            data: [
+              {
+                id: 'm-1',
+                slug: 'chest',
+                name: 'Chest',
+                anatomicalRegion: 'Upper body',
+                exerciseCount: 2,
+              },
+            ],
+          });
+        }
+        if (url.includes('/api/v1/nutrition/recommendations')) {
+          return jsonResponse({
+            data: {
+              guidance:
+                'These meals are general guidance. They are not a medical diet or a guarantee of performance.',
+              goal: null,
+              intent: 'cut',
+              suggestions: [
+                {
+                  slug: 'eggs',
+                  name: 'Eggs with potatoes',
+                  timing: 'post',
+                  emphasis: 'protein',
+                  reason:
+                    'A cut lists protein-leaning meals first. The order is general guidance.',
+                },
+              ],
+              meals: [],
+            },
+          });
+        }
+        return jsonResponse({
+          data: {
+            experience: 'intermediate',
+            difficulty: 'intermediate',
+            prerequisiteDifficulty: 'beginner',
+            exercises: [
+              {
+                slug: 'push-up',
+                name: 'Push-up',
+                difficulty: 'beginner',
+                region: 'mid',
+                movementType: 'compound',
+              },
+            ],
+          },
+        });
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/workouts/new?intent=cut']}>
+        <Routes>
+          <Route path="/workouts/new" element={<WorkoutBuilderPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByLabelText('Goal')).toHaveValue('strength');
+    expect(screen.getByLabelText('Session length')).toHaveValue('standard');
+    expect(
+      screen.getByText('Suggested session: strength, standard length.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/The warm-up comes first/)).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Eggs with potatoes' })).toHaveAttribute(
+      'href',
+      '/nutrition?intent=cut',
+    );
+    expect(
+      screen.getByText(
+        'A cut lists protein-leaning meals first. The order is general guidance.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Cut meal ideas' })).toHaveAttribute(
+      'href',
+      '/nutrition?intent=cut',
+    );
+
+    await userEvent.selectOptions(screen.getByLabelText('Experience'), 'intermediate');
+
+    expect(await screen.findByRole('link', { name: 'Push-up' })).toHaveAttribute(
+      'href',
+      '/exercises/push-up',
+    );
+    expect(screen.getByText('Suggested first')).toBeInTheDocument();
+    expect(screen.getByText(/easier version of each pattern/)).toBeInTheDocument();
+  });
 });

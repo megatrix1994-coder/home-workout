@@ -106,6 +106,48 @@ describe('ExerciseDetailPage', () => {
     expect(screen.getByText(/add 5 kg next time/)).toBeInTheDocument();
   });
 
+  it('links the easier version for a harder exercise', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          data: {
+            id: 'ex-3',
+            slug: 'paused-press',
+            name: 'Paused press',
+            description: 'A harder press.',
+            instructions: 'Setup: Lie back.\n1. Pause.\nBreathing: Keep breathing.\nCommon mistakes: Bouncing.',
+            difficulty: 'advanced',
+            movementType: 'compound',
+            goals: ['strength'],
+            muscles: [{ slug: 'chest', name: 'Chest', role: 'primary' }],
+            equipment: [{ slug: 'dumbbell', name: 'Dumbbell', category: 'free_weight' }],
+            prerequisite: {
+              slug: 'supported-press',
+              name: 'Supported press',
+              difficulty: 'intermediate',
+            },
+          },
+        }),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/exercises/paused-press']}>
+        <Routes>
+          <Route path="/exercises/:slug" element={<ExerciseDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Easier version' })).toBeInTheDocument();
+    expect(screen.getByText(/whether the aim is a cut or a bulk/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Supported press' })).toHaveAttribute(
+      'href',
+      '/exercises/supported-press',
+    );
+  });
+
   it('shows a not-found state', async () => {
     vi.stubGlobal(
       'fetch',

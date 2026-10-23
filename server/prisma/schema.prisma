@@ -278,3 +278,103 @@ enum ReviewStatus {
   draft
   approved
 }
+
+enum FoodRegion {
+  local
+  international
+}
+
+enum BudgetBand {
+  low
+  moderate
+}
+
+enum MealTiming {
+  pre
+  post
+}
+
+enum DietPattern {
+  vegetarian
+  vegan
+}
+
+enum NutrientName {
+  energy
+  protein
+  carbohydrate
+  fat
+}
+
+enum MealEmphasis {
+  carbohydrate
+  protein
+  mixed
+}
+
+enum Allergen {
+  milk
+  egg
+  peanut
+  fish
+  soy
+  gluten
+  tree_nut
+}
+
+model Food {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  name        String
+  region      FoodRegion
+  servingSize String
+  preparation String
+  allergens   Allergen[]
+  diets       DietPattern[]
+  nutrients   FoodNutrient[]
+  meals       MealFood[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model FoodNutrient {
+  id         String       @id @default(cuid())
+  foodId     String
+  nutrient   NutrientName
+  amount     Float
+  unit       String
+  sourceName String
+  food       Food         @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, nutrient])
+  @@index([foodId])
+}
+
+model Meal {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  timing      MealTiming
+  region      FoodRegion
+  rationale   String
+  prepMinutes Int
+  budget      BudgetBand
+  emphasis    MealEmphasis
+  foods       MealFood[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([timing])
+  @@index([region])
+}
+
+model MealFood {
+  mealId String
+  foodId String
+  order  Int
+  meal   Meal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  food   Food   @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@id([mealId, foodId])
+  @@unique([mealId, order])
+}

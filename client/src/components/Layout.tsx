@@ -32,6 +32,9 @@ export function Layout() {
             <NavLink to="/exercises" className={linkClass}>
               Exercises
             </NavLink>
+            <NavLink to="/nutrition" className={linkClass}>
+              Meals
+            </NavLink>
           </nav>
         </div>
       </header>

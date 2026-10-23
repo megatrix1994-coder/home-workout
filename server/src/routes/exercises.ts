@@ -1,12 +1,28 @@
 import type { Equipment, Exercise, ExerciseEquipment, ExerciseMuscle, MuscleGroup } from '@prisma/client';
 import { Router } from 'express';
+import { z } from 'zod';
 import { prisma } from '../db.js';
 import { approvedAnimations } from '../lib/animations.js';
+import {
+  easierDifficulty,
+  listPrerequisites,
+  pickPrerequisite,
+  type PrerequisiteCandidate,
+} from '../lib/body-composition.js';
 import { buildExerciseWhere, exerciseListQuerySchema } from '../lib/exercise-query.js';
 import { HttpError } from '../lib/http.js';
 import { progressionCycle } from '../lib/progression.js';
-import type { TrainingGoal } from '../lib/recommend.js';
+import { experienceLevels, trainingGoals, type TrainingGoal } from '../lib/recommend.js';
 import { asyncHandler } from '../middleware/error-handler.js';
+
+const prerequisiteQuerySchema = z.object({
+  muscle: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid muscle slug.'),
+  goal: z.enum(trainingGoals),
+  experience: z.enum(experienceLevels),
+});
 
 const exerciseInclude = {
   muscles: { include: { muscle: true } },
@@ -67,6 +83,21 @@ function serializeExercise(exercise: ExerciseRecord, includeInstructions: boolea
   };
 }
 
+function toCandidate(exercise: ExerciseRecord): PrerequisiteCandidate {
+  return {
+    slug: exercise.slug,
+    name: exercise.name,
+    difficulty: exercise.difficulty,
+    movementType: exercise.movementType,
+    region: exercise.region,
+    goals: exercise.goals ?? [],
+    muscles: exercise.muscles.map((muscle) => ({
+      slug: muscle.muscle.slug,
+      role: muscle.role,
+    })),
+  };
+}
+
 function progressionFor(exercise: ExerciseRecord) {
   const goal = exercise.goals?.[0] as TrainingGoal | undefined;
   if (!goal) {
@@ -107,6 +138,52 @@ exercisesRouter.get(
 );
 
 exercisesRouter.get(
+  '/prerequisites',
+  asyncHandler(async (req, res) => {
+    const query = prerequisiteQuerySchema.parse(req.query);
+    const listed = listPrerequisites(
+      {
+        muscleSlug: query.muscle,
+        goal: query.goal,
+        experience: query.experience,
+      },
+      [],
+    );
+    if (!listed.prerequisiteDifficulty) {
+      res.json({ data: listed });
+      return;
+    }
+
+    const muscle = await prisma.muscleGroup.findUnique({
+      where: { slug: query.muscle },
+    });
+    if (!muscle) {
+      res.json({ data: listed });
+      return;
+    }
+
+    const rows = await prisma.exercise.findMany({
+      where: {
+        difficulty: listed.prerequisiteDifficulty,
+        goals: { has: query.goal },
+        muscles: { some: { role: 'primary', muscleId: muscle.id } },
+      },
+      include: exerciseInclude,
+    });
+    res.json({
+      data: listPrerequisites(
+        {
+          muscleSlug: query.muscle,
+          goal: query.goal,
+          experience: query.experience,
+        },
+        rows.map((exercise) => toCandidate(exercise)),
+      ),
+    });
+  }),
+);
+
+exercisesRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
     const id = req.params.id;
@@ -117,6 +194,26 @@ exercisesRouter.get(
 
     if (!exercise) {
       throw new HttpError(404, 'NOT_FOUND', 'Exercise not found.');
+    }
+
+    const primary = exercise.muscles.find((muscle) => muscle.role === 'primary');
+    const goal = exercise.goals?.[0];
+    const easier = easierDifficulty(exercise.difficulty);
+    let prerequisite: ReturnType<typeof pickPrerequisite> = null;
+    if (easier && primary && goal) {
+      const rows = await prisma.exercise.findMany({
+        where: {
+          difficulty: easier,
+          region: exercise.region,
+          goals: { has: goal },
+          muscles: { some: { role: 'primary', muscleId: primary.muscleId } },
+        },
+        include: exerciseInclude,
+      });
+      prerequisite = pickPrerequisite(
+        toCandidate(exercise),
+        rows.map((row) => toCandidate(row)),
+      );
     }
 
     const [previous, next] = await Promise.all([
@@ -146,6 +243,7 @@ exercisesRouter.get(
       data: {
         ...serializeExercise(exercise, true),
         navigation: { previous, next },
+        prerequisite,
       },
     });
   }),

@@ -5,6 +5,7 @@ export type MovementType = 'compound' | 'isolation' | 'isometric';
 export type TrainingGoal =
   'strength' | 'hypertrophy' | 'general_fitness' | 'endurance';
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type BodyIntent = 'cut' | 'bulk';
 export type WorkoutStatus = 'draft' | 'started' | 'completed';
 
 export type MuscleGroup = {
@@ -77,6 +78,11 @@ export type ExerciseDetail = ExerciseSummary & {
     previous: ExerciseNeighbor | null;
     next: ExerciseNeighbor | null;
   };
+  prerequisite?: {
+    slug: string;
+    name: string;
+    difficulty: Difficulty;
+  } | null;
 };
 
 export type ListResponse<T> = {
@@ -138,6 +144,56 @@ export type WorkoutSetLog = {
   setNumber: number;
   repsCompleted: number;
   weightKg: number | null;
+};
+
+export type NutrientName = 'energy' | 'protein' | 'carbohydrate' | 'fat';
+export type FoodRegion = 'local' | 'international';
+export type BudgetBand = 'low' | 'moderate';
+export type MealTiming = 'pre' | 'post';
+export type MealEmphasis = 'carbohydrate' | 'protein' | 'mixed';
+
+export type FoodNutrient = {
+  nutrient: NutrientName;
+  amount: number;
+  unit: string;
+  sourceName: string;
+};
+
+export type MealFood = {
+  slug: string;
+  name: string;
+  region: FoodRegion;
+  servingSize: string;
+  preparation: string;
+  nutrients: FoodNutrient[];
+};
+
+export type MealSuggestion = {
+  slug: string;
+  name: string;
+  timing: MealTiming;
+  region: FoodRegion;
+  rationale: string;
+  prepMinutes: number;
+  budget: BudgetBand;
+  emphasis: MealEmphasis;
+  foods: MealFood[];
+};
+
+export type MealSuggestionPick = {
+  slug: string;
+  name: string;
+  timing: MealTiming;
+  emphasis: MealEmphasis;
+  reason: string;
+};
+
+export type NutritionRecommendation = {
+  guidance: string;
+  goal: TrainingGoal | null;
+  intent: BodyIntent | null;
+  suggestions: MealSuggestionPick[];
+  meals: MealSuggestion[];
 };
 
 export type WorkoutPlan = {

@@ -3,6 +3,7 @@ import express from 'express';
 import { errorHandler } from './middleware/error-handler.js';
 import { exercisesRouter } from './routes/exercises.js';
 import { musclesRouter } from './routes/muscles.js';
+import { nutritionRouter } from './routes/nutrition.js';
 import { workoutsRouter } from './routes/workouts.js';
 
 export function createApp() {
@@ -17,6 +18,7 @@ export function createApp() {
   app.use('/api/v1/muscles', musclesRouter);
   app.use('/api/v1/exercises', exercisesRouter);
   app.use('/api/v1/workouts', workoutsRouter);
+  app.use('/api/v1/nutrition', nutritionRouter);
   app.use('/api', (_req, res) => {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'API route not found.' },

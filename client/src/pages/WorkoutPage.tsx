@@ -127,6 +127,7 @@ export function WorkoutPage() {
         links={[
           { to: `/exercises?muscle=${workout.muscle.slug}`, label: `${workout.muscle.name} exercises` },
           { to: '/workouts/new', label: 'Build another' },
+          { to: '/nutrition', label: 'Meal ideas' },
         ]}
       />
       <PageIntro

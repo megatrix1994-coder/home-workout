@@ -4,6 +4,7 @@ import { ExerciseDetailPage } from './pages/ExerciseDetailPage';
 import { ExercisesPage } from './pages/ExercisesPage';
 import { HomePage } from './pages/HomePage';
 import { MusclesPage } from './pages/MusclesPage';
+import { NutritionPage } from './pages/NutritionPage';
 import { WorkoutBuilderPage } from './pages/WorkoutBuilderPage';
 import { WorkoutPage } from './pages/WorkoutPage';
 
@@ -15,6 +16,7 @@ export function App() {
         <Route path="/workouts/new" element={<WorkoutBuilderPage />} />
         <Route path="/workouts/:id" element={<WorkoutPage />} />
         <Route path="/muscles" element={<MusclesPage />} />
+        <Route path="/nutrition" element={<NutritionPage />} />
         <Route path="/exercises" element={<ExercisesPage />} />
         <Route path="/exercises/:slug" element={<ExerciseDetailPage />} />
       </Route>

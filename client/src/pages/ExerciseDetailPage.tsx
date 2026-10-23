@@ -103,6 +103,27 @@ export function ExerciseDetailPage() {
         </section>
       </div>
 
+      {exercise.prerequisite ? (
+        <section className="mt-4 rounded-2xl border border-line bg-card p-5">
+          <h2 className="font-display text-2xl font-semibold">Easier version</h2>
+          <p className="mt-2 leading-7">
+            Meet the clean-rep target on this easier version before the harder one,
+            whether the aim is a cut or a bulk.
+          </p>
+          <p className="mt-3">
+            <Link
+              to={`/exercises/${exercise.prerequisite.slug}`}
+              className="font-semibold"
+            >
+              {exercise.prerequisite.name}
+            </Link>{' '}
+            <span className="text-muted">
+              ({labelDifficulty(exercise.prerequisite.difficulty)})
+            </span>
+          </p>
+        </section>
+      ) : null}
+
       {exercise.progression && exercise.progression.length > 0 ? (
         <section className="mt-4 rounded-2xl border border-line bg-card p-5">
           <h2 className="font-display text-2xl font-semibold">Progressive overload</h2>
