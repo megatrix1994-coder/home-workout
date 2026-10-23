@@ -10,7 +10,6 @@ import {
 import { PageNav } from '../components/PageNav';
 import { WorkoutSummary } from '../components/WorkoutSummary';
 import { labelDifficulty } from '../labels';
-import { rememberDraft } from '../storage';
 import type {
   BodyIntent,
   Difficulty,
@@ -320,7 +319,6 @@ export function WorkoutBuilderPage() {
           }),
         },
       );
-      rememberDraft(response.data.id);
       navigate(`/workouts/${response.data.id}`);
     } catch (error) {
       setSaveError(

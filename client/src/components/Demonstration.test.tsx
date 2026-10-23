@@ -77,6 +77,39 @@ describe('Demonstration', () => {
     expect(screen.getByText('Sit tall.')).toBeInTheDocument();
   });
 
+  it('waits for Play and starts at half speed under reduced motion', async () => {
+    const user = userEvent.setup();
+    const play = vi.fn().mockResolvedValue(undefined);
+    HTMLMediaElement.prototype.play = play;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+
+    render(
+      <Demonstration
+        instructions={instructions}
+        animations={[{ id: 'clip', format: 'video', assetUrl: '/clip.mp4' }]}
+      />,
+    );
+
+    const video = screen.getByLabelText('Exercise demonstration');
+    expect(video).not.toHaveAttribute('autoplay');
+    expect(play).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '0.5x' })).toHaveAttribute('aria-pressed', 'true');
+    expect(video).toHaveProperty('playbackRate', 0.5);
+    expect(screen.getByText(/asks for reduced motion/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Play' }));
+    expect(play).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
   it('ignores a lottie asset and keeps the written cues', () => {
     render(
       <Demonstration

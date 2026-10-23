@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,7 +10,9 @@ const {
   countExercises,
   groupExercises,
   findFirstExercise,
+  findUniqueSession,
 } = vi.hoisted(() => ({
+  findUniqueSession: vi.fn(),
   findManyMuscles: vi.fn(),
   findManyExercises: vi.fn(),
   countExercises: vi.fn(),
@@ -17,6 +22,7 @@ const {
 
 vi.mock('./db', () => ({
   prisma: {
+    session: { findUnique: findUniqueSession, update: vi.fn(), deleteMany: vi.fn() },
     muscleGroup: { findMany: findManyMuscles },
     exercise: {
       findMany: findManyExercises,
@@ -28,8 +34,14 @@ vi.mock('./db', () => ({
 }));
 
 import { createApp } from './app.js';
+import { sessionFor, TEST_COOKIE } from './test/session.js';
 
 const app = createApp();
+const api = request.agent(app).set('Cookie', TEST_COOKIE).set('Sec-Fetch-Site', 'same-origin');
+
+beforeEach(() => {
+  findUniqueSession.mockResolvedValue(sessionFor());
+});
 
 const chestPress = {
   id: 'ex-1',
@@ -79,7 +91,7 @@ describe('catalogue API', () => {
       },
     ]);
 
-    const response = await request(app).get('/api/v1/muscles');
+    const response = await api.get('/api/v1/muscles');
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
@@ -100,7 +112,7 @@ describe('catalogue API', () => {
     countExercises.mockResolvedValue(1);
     groupExercises.mockResolvedValue([{ region: 'mid' }]);
 
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/exercises?search=press&muscle=chest&equipmentCategory=machine',
     );
 
@@ -146,7 +158,7 @@ describe('catalogue API', () => {
   });
 
   it('rejects an invalid equipment category', async () => {
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/exercises?equipmentCategory=kettlebell',
     );
     expect(response.status).toBe(400);
@@ -157,7 +169,7 @@ describe('catalogue API', () => {
   it('returns an exercise detail by slug', async () => {
     findFirstExercise.mockResolvedValue(chestPress);
 
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/exercises/machine-chest-press',
     );
 
@@ -194,7 +206,7 @@ describe('catalogue API', () => {
       ],
     });
 
-    const response = await request(app).get('/api/v1/exercises/machine-chest-press');
+    const response = await api.get('/api/v1/exercises/machine-chest-press');
 
     expect(response.status).toBe(200);
     expect(response.body.data.animations).toEqual([
@@ -205,7 +217,7 @@ describe('catalogue API', () => {
 
   it('returns 404 when an exercise is missing', async () => {
     findFirstExercise.mockResolvedValue(null);
-    const response = await request(app).get('/api/v1/exercises/missing');
+    const response = await api.get('/api/v1/exercises/missing');
     expect(response.status).toBe(404);
     expect(response.body.error).toEqual({
       code: 'NOT_FOUND',
@@ -215,7 +227,7 @@ describe('catalogue API', () => {
 
   it('returns 500 when the catalogue query fails', async () => {
     findManyMuscles.mockRejectedValue(new Error('database down'));
-    const response = await request(app).get('/api/v1/muscles');
+    const response = await api.get('/api/v1/muscles');
     expect(response.status).toBe(500);
     expect(response.body.error.code).toBe('INTERNAL_ERROR');
   });
@@ -225,12 +237,66 @@ describe('catalogue API', () => {
     error.name = 'PrismaClientInitializationError';
     findManyMuscles.mockRejectedValue(error);
 
-    const response = await request(app).get('/api/v1/muscles');
+    const response = await api.get('/api/v1/muscles');
 
     expect(response.status).toBe(503);
     expect(response.body.error).toEqual({
       code: 'DATABASE_UNAVAILABLE',
       message: 'The database is unavailable. Start it, then try again.',
     });
+  });
+});
+
+describe('security and production serving', () => {
+  it('sets security headers and hides the framework', async () => {
+    const response = await request(createApp()).get('/api/v1/unknown');
+    expect(response.status).toBe(404);
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers['referrer-policy']).toBe('no-referrer');
+    expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['x-powered-by']).toBeUndefined();
+  });
+
+  it('rejects a body over 100 kB and malformed JSON', async () => {
+    const app = createApp();
+    const large = await request(app)
+      .post('/api/v1/workouts')
+      .set('Sec-Fetch-Site', 'same-origin')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ padding: 'x'.repeat(110 * 1024) }));
+    expect(large.status).toBe(413);
+    expect(large.body.error.code).toBe('PAYLOAD_TOO_LARGE');
+
+    const malformed = await request(app)
+      .post('/api/v1/workouts')
+      .set('Sec-Fetch-Site', 'same-origin')
+      .set('Content-Type', 'application/json')
+      .send('{"muscle":');
+    expect(malformed.status).toBe(400);
+    expect(malformed.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('serves the built client with an index fallback that leaves the API alone', async () => {
+    const clientDir = mkdtempSync(path.join(tmpdir(), 'client-dist-'));
+    writeFileSync(path.join(clientDir, 'index.html'), '<!doctype html><title>Home Workout</title>');
+    writeFileSync(path.join(clientDir, 'app.js'), 'console.log(1);');
+    const app = createApp({ clientDir });
+
+    const page = await request(app).get('/workouts/abc');
+    expect(page.status).toBe(200);
+    expect(page.text).toContain('<title>Home Workout</title>');
+    expect(page.headers['x-frame-options']).toBe('DENY');
+
+    const asset = await request(app).get('/app.js');
+    expect(asset.status).toBe(200);
+    expect(asset.headers['content-type']).toMatch(/javascript/);
+
+    const missingAsset = await request(app).get('/demonstrations/missing.mp4');
+    expect(missingAsset.status).toBe(404);
+
+    const api = await request(app).get('/api/v1/unknown');
+    expect(api.status).toBe(404);
+    expect(api.body.error.code).toBe('NOT_FOUND');
+    rmSync(clientDir, { recursive: true, force: true });
   });
 });

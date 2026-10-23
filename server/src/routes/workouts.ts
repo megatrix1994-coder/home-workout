@@ -5,9 +5,10 @@ import type {
   ExerciseMuscle,
   MuscleGroup,
 } from '@prisma/client';
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { prisma } from '../db.js';
 import { approvedAnimations } from '../lib/animations.js';
+import { currentUser } from '../lib/auth.js';
 import { HttpError } from '../lib/http.js';
 import {
   exerciseReason,
@@ -25,8 +26,11 @@ import {
 import { exerciseProgression, type LoggedSet } from '../lib/progression.js';
 import { gentleSlug } from '../cooldowns.js';
 import { trainedMuscleSlugs } from '../lib/cooldown.js';
+import { buildProgress, summarizeExercise, type HistoryWorkout } from '../lib/history.js';
 import {
   createWorkoutSchema,
+  HISTORY_LIMIT,
+  historyQuerySchema,
   logSetSchema,
   recommendationQuerySchema,
   updateCooldownSchema,
@@ -275,7 +279,7 @@ function assertEligible(
   return new Map(candidates.map((candidate) => [candidate.id, candidate]));
 }
 
-async function serializeWorkout(workout: WorkoutRecord) {
+async function serializeWorkout(workout: WorkoutRecord, userId: string) {
   const input = recommendationInput(
     workout.muscle,
     workout.goal,
@@ -285,6 +289,7 @@ async function serializeWorkout(workout: WorkoutRecord) {
   const candidates = await loadPrimaryCandidates(workout.muscleId);
   const selectedIds = workout.exercises.map((exercise) => exercise.exerciseId);
   const previousLogs = await priorLogsByExercise({
+    userId,
     excludeId: workout.id,
     muscleId: workout.muscleId,
     goal: workout.goal,
@@ -373,6 +378,7 @@ async function serializeWorkout(workout: WorkoutRecord) {
 }
 
 async function priorLogsByExercise(query: {
+  userId: string;
   excludeId?: string;
   muscleId: string;
   goal: TrainingGoal;
@@ -380,6 +386,7 @@ async function priorLogsByExercise(query: {
 }) {
   const plans = await prisma.workoutPlan.findMany({
     where: {
+      userId: query.userId,
       ...(query.excludeId ? { id: { not: query.excludeId } } : {}),
       muscleId: query.muscleId,
       goal: query.goal,
@@ -424,6 +431,10 @@ function routeId(value: string | string[] | undefined) {
   return value ?? '';
 }
 
+function ownedWorkout(req: Request) {
+  return { id: routeId(req.params.id), userId: currentUser(req).id };
+}
+
 export const workoutsRouter = Router();
 
 workoutsRouter.get(
@@ -463,6 +474,7 @@ workoutsRouter.get(
       query.length,
     );
     const previousLogs = await priorLogsByExercise({
+      userId: currentUser(req).id,
       muscleId: muscle.id,
       goal: query.goal,
       experience: query.experience,
@@ -537,8 +549,10 @@ workoutsRouter.post(
       }) / 60,
     );
 
+    const userId = currentUser(req).id;
     const saved = await prisma.workoutPlan.create({
       data: {
+        userId,
         muscleId: muscle.id,
         goal: body.goal,
         experience: body.experience,
@@ -567,21 +581,81 @@ workoutsRouter.post(
       include: workoutInclude,
     });
 
-    res.status(201).json({ data: await serializeWorkout(saved) });
+    res.status(201).json({ data: await serializeWorkout(saved, userId) });
+  }),
+);
+
+workoutsRouter.get(
+  '/',
+  asyncHandler(async (req, res) => {
+    const { status } = historyQuerySchema.parse(req.query);
+    const plans = await prisma.workoutPlan.findMany({
+      where: { userId: currentUser(req).id, ...(status ? { status } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: HISTORY_LIMIT,
+      include: {
+        muscle: true,
+        exercises: {
+          orderBy: { order: 'asc' },
+          include: {
+            exercise: { include: { equipment: { include: { equipment: true } } } },
+            setLogs: { select: { repsCompleted: true, weightKg: true } },
+          },
+        },
+      },
+    });
+
+    const workouts: Array<HistoryWorkout & { plan: (typeof plans)[number] }> = plans.map(
+      (plan) => ({
+        plan,
+        id: plan.id,
+        status: plan.status,
+        muscle: { slug: plan.muscle.slug, name: plan.muscle.name },
+        createdAt: plan.createdAt,
+        completedAt: plan.completedAt,
+        exercises: plan.exercises.map((line) => ({
+          slug: line.exercise.slug,
+          name: line.exercise.name,
+          bodyweightOnly: line.exercise.equipment.every(
+            (item) => item.equipment.category === 'bodyweight',
+          ),
+          plannedSets: line.sets * plan.rounds,
+          logs: line.setLogs,
+        })),
+      }),
+    );
+
+    res.json({
+      data: workouts.map(({ plan, ...workout }) => ({
+        id: workout.id,
+        status: workout.status,
+        goal: plan.goal,
+        experience: plan.experience,
+        muscle: workout.muscle,
+        createdAt: plan.createdAt.toISOString(),
+        startedAt: plan.startedAt?.toISOString() ?? null,
+        completedAt: plan.completedAt?.toISOString() ?? null,
+        estimatedMinutes: plan.estimatedMinutes,
+        setsLogged: workout.exercises.reduce((sum, line) => sum + line.logs.length, 0),
+        setsPlanned: workout.exercises.reduce((sum, line) => sum + line.plannedSets, 0),
+        exercises: workout.exercises.map((line) => summarizeExercise(line)),
+      })),
+      meta: { progress: buildProgress(workouts, new Date()) },
+    });
   }),
 );
 
 workoutsRouter.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const workout = await prisma.workoutPlan.findUnique({
-      where: { id: routeId(req.params.id) },
+    const workout = await prisma.workoutPlan.findFirst({
+      where: ownedWorkout(req),
       include: workoutInclude,
     });
     if (!workout) {
       throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
     }
-    res.json({ data: await serializeWorkout(workout) });
+    res.json({ data: await serializeWorkout(workout, currentUser(req).id) });
   }),
 );
 
@@ -589,8 +663,8 @@ workoutsRouter.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const body = updateWorkoutSchema.parse(req.body);
-    const existing = await prisma.workoutPlan.findUnique({
-      where: { id: routeId(req.params.id) },
+    const existing = await prisma.workoutPlan.findFirst({
+      where: ownedWorkout(req),
       include: { muscle: true },
     });
     if (!existing) {
@@ -653,22 +727,22 @@ workoutsRouter.patch(
     if (!saved) {
       throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
     }
-    res.json({ data: await serializeWorkout(saved) });
+    res.json({ data: await serializeWorkout(saved, currentUser(req).id) });
   }),
 );
 
 workoutsRouter.post(
   '/:id/start',
   asyncHandler(async (req, res) => {
-    const existing = await prisma.workoutPlan.findUnique({
-      where: { id: routeId(req.params.id) },
+    const existing = await prisma.workoutPlan.findFirst({
+      where: ownedWorkout(req),
       include: workoutInclude,
     });
     if (!existing) {
       throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
     }
     if (existing.status === 'started' || existing.status === 'completed') {
-      res.json({ data: await serializeWorkout(existing) });
+      res.json({ data: await serializeWorkout(existing, currentUser(req).id) });
       return;
     }
 
@@ -677,7 +751,7 @@ workoutsRouter.post(
       data: { status: 'started', startedAt: new Date() },
       include: workoutInclude,
     });
-    res.json({ data: await serializeWorkout(started) });
+    res.json({ data: await serializeWorkout(started, currentUser(req).id) });
   }),
 );
 
@@ -699,8 +773,8 @@ workoutsRouter.post(
   '/:id/sets',
   asyncHandler(async (req, res) => {
     const body = logSetSchema.parse(req.body);
-    const existing = await prisma.workoutPlan.findUnique({
-      where: { id: routeId(req.params.id) },
+    const existing = await prisma.workoutPlan.findFirst({
+      where: ownedWorkout(req),
       include: workoutInclude,
     });
     if (!existing) {
@@ -764,11 +838,11 @@ workoutsRouter.post(
         data: { status: 'completed', completedAt: new Date() },
         include: workoutInclude,
       });
-      res.json({ data: await serializeWorkout(completed) });
+      res.json({ data: await serializeWorkout(completed, currentUser(req).id) });
       return;
     }
 
-    res.json({ data: await serializeWorkout(saved) });
+    res.json({ data: await serializeWorkout(saved, currentUser(req).id) });
   }),
 );
 
@@ -776,8 +850,8 @@ workoutsRouter.patch(
   '/:id/cooldowns/:cooldownId',
   asyncHandler(async (req, res) => {
     const body = updateCooldownSchema.parse(req.body);
-    const existing = await prisma.workoutPlan.findUnique({
-      where: { id: routeId(req.params.id) },
+    const existing = await prisma.workoutPlan.findFirst({
+      where: ownedWorkout(req),
       include: workoutInclude,
     });
     if (!existing) {
@@ -830,7 +904,7 @@ workoutsRouter.patch(
     if (!saved) {
       throw new HttpError(404, 'NOT_FOUND', 'Workout not found.');
     }
-    res.json({ data: await serializeWorkout(saved) });
+    res.json({ data: await serializeWorkout(saved, currentUser(req).id) });
   }),
 );
 

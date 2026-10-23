@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { apiRequest, useApi } from '../api';
 import {
   EmptyState,
@@ -11,7 +11,6 @@ import { GuidedSession } from '../components/GuidedSession';
 import { PageNav } from '../components/PageNav';
 import { WorkoutSummary } from '../components/WorkoutSummary';
 import { labelEquipmentCategory, labelExperience, labelGoal } from '../labels';
-import { rememberStarted } from '../storage';
 import type {
   ItemResponse,
   WorkoutPlan,
@@ -72,9 +71,6 @@ export function WorkoutPage() {
             },
           )
         : saved;
-      if (andStart) {
-        rememberStarted(next.data.id);
-      }
       setLocal({
         id: next.data.id,
         status: next.data.status,
@@ -178,6 +174,14 @@ export function WorkoutPage() {
             />
           )}
           <div className="mt-6 flex flex-wrap items-center gap-3">
+            {local.status === 'completed' ? (
+              <Link
+                to="/history"
+                className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent"
+              >
+                View history
+              </Link>
+            ) : null}
             {started ? null : (
               <>
                 <button

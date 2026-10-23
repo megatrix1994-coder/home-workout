@@ -1,8 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRAFT_WORKOUT_KEY, STARTED_WORKOUT_KEY } from '../storage';
+import { describe, expect, it, vi } from 'vitest';
 import { WorkoutPage } from './WorkoutPage';
 
 const plan = {
@@ -53,24 +52,17 @@ function jsonResponse(body: unknown) {
 }
 
 describe('WorkoutPage', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    localStorage.setItem(DRAFT_WORKOUT_KEY, 'draft-9');
-  });
-
-  it('records a started workout without replacing the saved draft', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.endsWith('/start')) {
-          return jsonResponse({
-            data: { ...plan, status: 'started', startedAt: '2026-10-22T00:00:00.000Z' },
-          });
-        }
-        return jsonResponse({ data: plan });
-      }),
-    );
+  it('starts a saved workout on the server', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/start')) {
+        return jsonResponse({
+          data: { ...plan, status: 'started', startedAt: '2026-10-22T00:00:00.000Z' },
+        });
+      }
+      return jsonResponse({ data: plan });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(
       <MemoryRouter initialEntries={['/workouts/workout-1']}>
@@ -81,12 +73,12 @@ describe('WorkoutPage', () => {
     );
 
     expect(await screen.findByRole('button', { name: 'Start workout' })).toBeInTheDocument();
-    expect(localStorage.getItem(STARTED_WORKOUT_KEY)).toBeNull();
-    expect(localStorage.getItem(DRAFT_WORKOUT_KEY)).toBe('draft-9');
 
     await userEvent.click(screen.getByRole('button', { name: 'Start workout' }));
     expect(await screen.findByText('Started workout')).toBeInTheDocument();
-    expect(localStorage.getItem(STARTED_WORKOUT_KEY)).toBe('workout-1');
-    expect(localStorage.getItem(DRAFT_WORKOUT_KEY)).toBe('draft-9');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/workouts/workout-1/start',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 });

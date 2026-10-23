@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  docker-e2e:
+    needs: checks
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose --env-file server/.env.production -f docker-compose.prod.yml
+      E2E_ADMIN_EMAIL: e2e-admin@example.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Write a throwaway production env file
+        run: |
+          {
+            echo "POSTGRES_USER=homeworkout"
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
+            echo "POSTGRES_DB=homeworkout"
+            echo "CORS_ORIGIN=http://localhost:8080"
+            echo "PUBLIC_URL=http://localhost:8080"
+          } > server/.env.production
+          echo "E2E_ADMIN_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+
+      - name: Build and start the production stack
+        run: $COMPOSE up -d --build
+
+      - name: Wait for the app
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          $COMPOSE logs app
+          exit 1
+
+      - name: Seed the catalogue and create the test admin
+        run: |
+          $COMPOSE exec -T app npm run db:seed
+          $COMPOSE exec -T -e ADMIN_EMAIL="$E2E_ADMIN_EMAIL" -e ADMIN_NAME="E2E Admin" \
+            -e ADMIN_PASSWORD="$E2E_ADMIN_PASSWORD" app npm run admin:create -- --keep-unowned
+
+      - name: Smoke checks
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/muscles)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: https://evil.example' \
+            -H 'Content-Type: application/json' -d '{}' http://localhost:8080/api/v1/auth/login)" = 403
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
+
+      - name: App logs
+        if: failure()
+        run: $COMPOSE logs app
+
+      - name: Stop the stack
+        if: always()
+        run: $COMPOSE down -v

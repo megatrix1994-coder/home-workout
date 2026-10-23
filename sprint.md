@@ -164,6 +164,19 @@ The release is deployed to a test or production environment and verified.
 
 Deliverable: An MVP ready for controlled user testing.
 
+Delivery status (23 October 2026)
+Delivered: workout history at /history with sessions in the last 7 and 28 days, a weekly streak, sessions per muscle, and best-set trends.
+Delivered: invite-only accounts, per-user workouts and history, and an admin page to invite, remove, restore, reset, change roles, and delete accounts.
+Delivered: authorization review. Every workout route checks the owner, sessions are hashed HttpOnly cookies, cross-site writes are refused, sign-in attempts are rate-limited, and secrets stay out of git.
+Delivered: server, client, and Playwright tests for the full journey, media fallback, reduced motion, accessibility on desktop and phone, and the admin and privacy flow.
+Delivered: a production build served on one port, a Dockerfile, docker-compose.prod.yml, and documented environment variables.
+Verified locally: the production build on port 8080 passed every Playwright suite, including after cross-site writes were made strict (a write must carry the app's own Origin, or Sec-Fetch-Site same-origin).
+Delivered: GitHub Actions runs lint, unit tests, the build, the audit, and the Playwright suites against the Docker production stack.
+Delivered: automated content checks in server/src/content.test.ts. They found 18 cooldown stretches without a pain warning; every cooldown now ends with "Ease off at once if you feel pain, numbness, or tingling."
+Open: run the Docker image locally. Docker Desktop is installed and waits for a Windows restart.
+Open: deploy to a hosted test environment over HTTPS.
+Open: awaiting qualified review. The sheets in content-review/ (exercises, warm-ups, cooldowns, nutrition) are ready for a trainer and a nutritionist. No review has taken place yet.
+
 3. Suggested backlog and priorities
 Priority	Feature	Sprint
 P0	Repository audit and working development setup	Pre-sprint

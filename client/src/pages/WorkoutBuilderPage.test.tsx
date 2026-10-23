@@ -2,7 +2,6 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DRAFT_WORKOUT_KEY, STARTED_WORKOUT_KEY } from '../storage';
 import { WorkoutBuilderPage } from './WorkoutBuilderPage';
 
 const pushUp = {
@@ -252,12 +251,8 @@ describe('WorkoutBuilderPage', () => {
     expect(screen.getByText('Setup: Lie on a bench.')).toBeInTheDocument();
   });
 
-  it('saves a new plan as a draft and leaves a started workout in place', async () => {
-    localStorage.clear();
-    localStorage.setItem(STARTED_WORKOUT_KEY, 'started-1');
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+  it('saves a new plan as a draft and opens it', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         if (url.includes('/api/v1/muscles')) {
           return jsonResponse({
@@ -288,8 +283,8 @@ describe('WorkoutBuilderPage', () => {
             exercises: [slot(pushUp)],
           },
         });
-      }),
-    );
+      });
+    vi.stubGlobal('fetch', fetchMock);
 
     render(
       <MemoryRouter initialEntries={['/workouts/new']}>
@@ -303,8 +298,10 @@ describe('WorkoutBuilderPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Build workout' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Save workout' }));
     expect(await screen.findByText('Saved draft')).toBeInTheDocument();
-    expect(localStorage.getItem(DRAFT_WORKOUT_KEY)).toBe('workout-9');
-    expect(localStorage.getItem(STARTED_WORKOUT_KEY)).toBe('started-1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/workouts',
+      expect.objectContaining({ method: 'POST' }),
+    );
   });
 
   it('starts a cut on strength and a standard session, then lists easier exercises', async () => {

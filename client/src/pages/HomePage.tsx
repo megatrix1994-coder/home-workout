@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PoseSlideshow } from '../components/PoseSlideshow';
 import { PageIntro } from '../components/Status';
-import { readWorkoutLinks } from '../storage';
-import type { BodyIntent, MealSuggestionPick } from '../types';
+import type { BodyIntent, MealSuggestionPick, WorkoutHistoryItem } from '../types';
 
 function SuggestedMeals({
   intent,
@@ -39,7 +38,21 @@ export function HomePage() {
   const [bulkSuggestions, setBulkSuggestions] = useState<MealSuggestionPick[]>([]);
 
   useEffect(() => {
-    setLinks(readWorkoutLinks());
+    const controller = new AbortController();
+    fetch('/api/v1/workouts', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json().catch(() => null)) as {
+          data?: WorkoutHistoryItem[];
+        } | null;
+        const workouts = body?.data ?? [];
+        setLinks({
+          startedId: workouts.find((workout) => workout.status === 'started')?.id ?? null,
+          draftId: workouts.find((workout) => workout.status === 'draft')?.id ?? null,
+        });
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -108,7 +121,7 @@ export function HomePage() {
             Continue workout
           </Link>
         ) : null}
-        {links.draftId && links.draftId !== links.startedId ? (
+        {links.draftId ? (
           <Link
             to={`/workouts/${links.draftId}`}
             className="rounded-full border border-line bg-card px-5 py-2.5 font-semibold"

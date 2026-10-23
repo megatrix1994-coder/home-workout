@@ -196,6 +196,87 @@ export type NutritionRecommendation = {
   meals: MealSuggestion[];
 };
 
+export type WorkoutHistoryItem = {
+  id: string;
+  status: WorkoutStatus;
+  goal: TrainingGoal;
+  experience: ExperienceLevel;
+  muscle: { slug: string; name: string };
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  estimatedMinutes: number;
+  setsLogged: number;
+  setsPlanned: number;
+  exercises: Array<{
+    slug: string;
+    name: string;
+    bestWeightKg: number | null;
+    totalReps: number;
+  }>;
+};
+
+export type ExerciseTrend = {
+  slug: string;
+  name: string;
+  unit: 'kg' | 'reps';
+  points: Array<{ workoutId: string; completedAt: string; value: number }>;
+  improved: boolean;
+};
+
+export type WorkoutProgress = {
+  completedLast7Days: number;
+  completedLast28Days: number;
+  weekStreak: number;
+  muscles: Array<{ slug: string; name: string; completed: number }>;
+  trends: ExerciseTrend[];
+};
+
+export type WorkoutHistoryResponse = {
+  data: WorkoutHistoryItem[];
+  meta: { progress: WorkoutProgress };
+};
+
+export type UserRole = 'admin' | 'member';
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+};
+
+export type AdminUser = AuthUser & {
+  status: 'active' | 'removed';
+  createdAt: string;
+  removedAt: string | null;
+  workoutCount: number;
+  lastSeenAt: string | null;
+};
+
+export type PendingInvite = {
+  id: string;
+  email: string | null;
+  role: UserRole;
+  createdAt: string;
+  expiresAt: string;
+  createdBy: string | null;
+};
+
+export type CreatedLink = {
+  id: string;
+  url: string;
+  expiresAt: string;
+  email?: string | null;
+  role?: UserRole;
+};
+
+export type AccessLink = {
+  kind: 'invite' | 'reset';
+  email: string | null;
+  expiresAt: string;
+};
+
 export type WorkoutPlan = {
   id: string;
   status: WorkoutStatus;

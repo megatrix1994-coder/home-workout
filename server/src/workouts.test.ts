@@ -6,7 +6,9 @@ const {
   findManyExercises,
   findManyStretches,
   findUniqueWorkout,
+  findFirstWorkout,
   findManyWorkouts,
+  findUniqueSession,
   createWorkout,
   updateWorkout,
   deleteWorkoutExercises,
@@ -21,7 +23,9 @@ const {
   findManyExercises: vi.fn(),
   findManyStretches: vi.fn(),
   findUniqueWorkout: vi.fn(),
+  findFirstWorkout: vi.fn(),
   findManyWorkouts: vi.fn(),
+  findUniqueSession: vi.fn(),
   createWorkout: vi.fn(),
   updateWorkout: vi.fn(),
   deleteWorkoutExercises: vi.fn(),
@@ -40,8 +44,10 @@ vi.mock('./db', () => ({
     exercise: { findMany: findManyExercises },
     stretch: { findMany: findManyStretches, findFirst: findFirstStretch },
     workoutCooldown: { createMany: createCooldown, update: updateCooldown },
+    session: { findUnique: findUniqueSession, update: vi.fn(), deleteMany: vi.fn() },
     workoutPlan: {
       findUnique: findUniqueWorkout,
+      findFirst: findFirstWorkout,
       findMany: findManyWorkouts,
       create: createWorkout,
       update: updateWorkout,
@@ -55,8 +61,14 @@ vi.mock('./db', () => ({
 }));
 
 import { createApp } from './app.js';
+import { sessionFor, TEST_COOKIE, testMember } from './test/session.js';
 
 const app = createApp();
+const api = request.agent(app).set('Cookie', TEST_COOKIE).set('Sec-Fetch-Site', 'same-origin');
+
+beforeEach(() => {
+  findUniqueSession.mockResolvedValue(sessionFor(testMember));
+});
 
 const chest = {
   id: 'm-1',
@@ -129,6 +141,7 @@ const catalog = [pushUp, machinePress, dumbbellPress];
 
 type StoredWorkout = {
   id: string;
+  userId?: string;
   muscleId: string;
   goal: string;
   experience: string;
@@ -249,6 +262,14 @@ describe('workout API', () => {
       async ({ where }: { where: { id: string } }) =>
         current && where.id === current.id ? current : null,
     );
+    findFirstWorkout.mockImplementation(
+      async ({ where }: { where: { id: string; userId: string } }) =>
+        current &&
+        where.id === current.id &&
+        where.userId === (current.userId ?? testMember.id)
+          ? current
+          : null,
+    );
     findManyWorkouts.mockResolvedValue([]);
     createWorkout.mockImplementation(
       async ({
@@ -276,6 +297,7 @@ describe('workout API', () => {
       }) => {
         current = {
           id: 'workout-1',
+          userId: data.userId,
           muscleId: chest.id,
           goal: data.goal,
           experience: data.experience,
@@ -336,14 +358,14 @@ describe('workout API', () => {
   });
 
   it('rejects an incomplete recommendation query', async () => {
-    const response = await request(app).get('/api/v1/workouts/recommendations');
+    const response = await api.get('/api/v1/workouts/recommendations');
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(findUniqueMuscle).not.toHaveBeenCalled();
   });
 
   it('returns an empty recommendation when the muscle is unknown', async () => {
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/workouts/recommendations?muscle=not-a-muscle&goal=strength&experience=beginner&equipment=bodyweight',
     );
     expect(response.status).toBe(200);
@@ -353,7 +375,7 @@ describe('workout API', () => {
   });
 
   it('recommends only exercises that match the selected equipment', async () => {
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/workouts/recommendations?muscle=chest&goal=strength&experience=beginner&equipment=bodyweight',
     );
 
@@ -381,7 +403,7 @@ describe('workout API', () => {
   });
 
   it('keeps the goal rest and one round for a standard session', async () => {
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/workouts/recommendations?muscle=chest&goal=general_fitness&experience=beginner&equipment=bodyweight&length=standard',
     );
 
@@ -413,7 +435,7 @@ describe('workout API', () => {
       },
     ]);
 
-    const response = await request(app).get(
+    const response = await api.get(
       '/api/v1/workouts/recommendations?muscle=chest&goal=general_fitness&experience=beginner&equipment=bodyweight&length=standard',
     );
 
@@ -425,7 +447,7 @@ describe('workout API', () => {
   });
 
   it('saves a draft workout and reads it back', async () => {
-    const created = await request(app)
+    const created = await api
       .post('/api/v1/workouts')
       .send({
         muscle: 'chest',
@@ -448,14 +470,14 @@ describe('workout API', () => {
       'Setup:',
     );
 
-    const fetched = await request(app).get('/api/v1/workouts/workout-1');
+    const fetched = await api.get('/api/v1/workouts/workout-1');
     expect(fetched.status).toBe(200);
     expect(fetched.body.data.exercises[0].exercise.slug).toBe('push-up');
     expect(fetched.body.data.exercises[0].exercise.animations).toEqual([]);
   });
 
   it('returns only an approved video on a saved exercise', async () => {
-    await request(app).post('/api/v1/workouts').send({
+    await api.post('/api/v1/workouts').send({
       muscle: 'chest',
       goal: 'strength',
       experience: 'beginner',
@@ -470,7 +492,7 @@ describe('workout API', () => {
       ],
     };
 
-    const fetched = await request(app).get('/api/v1/workouts/workout-1');
+    const fetched = await api.get('/api/v1/workouts/workout-1');
 
     expect(fetched.status).toBe(200);
     expect(fetched.body.data.exercises[0].exercise.animations).toEqual([
@@ -479,7 +501,7 @@ describe('workout API', () => {
   });
 
   it('saves a standard session as one round', async () => {
-    const created = await request(app).post('/api/v1/workouts').send({
+    const created = await api.post('/api/v1/workouts').send({
       muscle: 'chest',
       goal: 'general_fitness',
       experience: 'beginner',
@@ -492,8 +514,38 @@ describe('workout API', () => {
     expect(created.body.data.rounds).toBe(1);
   });
 
+  it("keeps a workout private to the person who saved it", async () => {
+    const created = await api.post('/api/v1/workouts').send({
+      muscle: 'chest',
+      goal: 'strength',
+      experience: 'beginner',
+      equipmentCategories: ['bodyweight'],
+      exercises: [{ exerciseId: 'ex-push', sets: 4, reps: '5', restSeconds: 150 }],
+    });
+    expect(created.status).toBe(201);
+    expect(createWorkout).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: testMember.id }) }),
+    );
+
+    findUniqueSession.mockResolvedValue(
+      sessionFor({ id: 'user-other', email: 'other@example.com', name: 'Other', role: 'admin' }),
+    );
+    expect((await api.get('/api/v1/workouts/workout-1')).status).toBe(404);
+    expect((await api.post('/api/v1/workouts/workout-1/start')).status).toBe(404);
+    expect(current!.status).toBe('draft');
+  });
+
+  it('bases load suggestions only on your own past sessions', async () => {
+    await api.get(
+      '/api/v1/workouts/recommendations?muscle=chest&goal=general_fitness&experience=beginner&equipment=bodyweight',
+    );
+    expect(findManyWorkouts).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ userId: testMember.id }) }),
+    );
+  });
+
   it('returns 404 for a missing workout', async () => {
-    const response = await request(app).get('/api/v1/workouts/missing');
+    const response = await api.get('/api/v1/workouts/missing');
     expect(response.status).toBe(404);
     expect(response.body.error).toEqual({
       code: 'NOT_FOUND',
@@ -529,7 +581,7 @@ describe('workout API', () => {
       ],
     };
 
-    const response = await request(app)
+    const response = await api
       .patch('/api/v1/workouts/workout-1')
       .send({
         exercises: [
@@ -572,7 +624,7 @@ describe('workout API', () => {
       ],
     };
 
-    const patched = await request(app)
+    const patched = await api
       .patch('/api/v1/workouts/workout-1')
       .send({
         exercises: [
@@ -592,7 +644,7 @@ describe('workout API', () => {
     expect(patched.body.data.exercises[0].reps).toBe('8-12');
     expect(deleteWorkoutExercises).toHaveBeenCalled();
 
-    const started = await request(app).post('/api/v1/workouts/workout-1/start');
+    const started = await api.post('/api/v1/workouts/workout-1/start');
     expect(started.status).toBe(200);
     expect(started.body.data.status).toBe('started');
     expect(started.body.data.startedAt).toEqual(expect.any(String));
@@ -649,7 +701,7 @@ describe('workout API', () => {
       return log;
     });
 
-    const response = await request(app).post('/api/v1/workouts/workout-1/sets').send({
+    const response = await api.post('/api/v1/workouts/workout-1/sets').send({
       workoutExerciseId: 'line-0',
       round: 1,
       setNumber: 1,
@@ -713,7 +765,7 @@ describe('workout API', () => {
       },
     ]);
 
-    const response = await request(app).get('/api/v1/workouts/workout-1');
+    const response = await api.get('/api/v1/workouts/workout-1');
 
     expect(response.status).toBe(200);
     expect(response.body.data.exercises[0].progression).toMatchObject({
@@ -766,7 +818,7 @@ describe('workout API', () => {
       },
     ]);
 
-    const response = await request(app).get('/api/v1/workouts/workout-1');
+    const response = await api.get('/api/v1/workouts/workout-1');
 
     expect(response.status).toBe(200);
     expect(response.body.data.exercises[0].progression).toMatchObject({
@@ -776,7 +828,7 @@ describe('workout API', () => {
   });
 
   it('rejects a reversed rep range', async () => {
-    const response = await request(app)
+    const response = await api
       .post('/api/v1/workouts')
       .send({
         muscle: 'chest',
@@ -882,7 +934,7 @@ describe('workout API', () => {
       return log;
     });
 
-    const response = await request(app).post('/api/v1/workouts/workout-1/sets').send({
+    const response = await api.post('/api/v1/workouts/workout-1/sets').send({
       workoutExerciseId: 'line-0',
       round: 1,
       setNumber: 1,
@@ -989,37 +1041,125 @@ describe('workout API', () => {
       name: 'Seated chest opener',
     });
 
-    const tooShort = await request(app)
+    const tooShort = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ durationSeconds: 19 });
     expect(tooShort.status).toBe(400);
-    const tooLong = await request(app)
+    const tooLong = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ durationSeconds: 91 });
     expect(tooLong.status).toBe(400);
     expect(updateCooldown).not.toHaveBeenCalled();
 
-    const longer = await request(app)
+    const longer = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ durationSeconds: 40 });
     expect(longer.status).toBe(200);
     expect(longer.body.data.cooldowns[0].durationSeconds).toBe(40);
 
-    const replaced = await request(app)
+    const replaced = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ replace: true });
     expect(replaced.status).toBe(200);
     expect(replaced.body.data.cooldowns[0].stretch.slug).toBe('cooldown-chest-easier');
 
-    const skipped = await request(app)
+    const skipped = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ status: 'skipped' });
     expect(skipped.status).toBe(200);
     expect(skipped.body.data.cooldowns[0].status).toBe('skipped');
 
-    const again = await request(app)
+    const again = await api
       .patch('/api/v1/workouts/workout-1/cooldowns/cool-1')
       .send({ status: 'completed' });
     expect(again.status).toBe(400);
+  });
+});
+
+describe('workout history API', () => {
+  const firstId = 'cmhist000000000000000001';
+  const secondId = 'cmhist000000000000000002';
+
+  function historyPlan(id: string, completedAt: string, weights: number[]) {
+    return {
+      id,
+      status: 'completed',
+      goal: 'strength',
+      experience: 'beginner',
+      estimatedMinutes: 30,
+      rounds: 1,
+      createdAt: new Date(completedAt),
+      startedAt: new Date(completedAt),
+      completedAt: new Date(completedAt),
+      muscle: chest,
+      exercises: [
+        {
+          sets: 2,
+          exercise: dumbbellPress,
+          setLogs: weights.map((weightKg) => ({ repsCompleted: 5, weightKg })),
+        },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists only the signed-in user's newest workouts with a progress summary", async () => {
+    findManyWorkouts.mockResolvedValue([
+      historyPlan(secondId, '2026-10-20T07:00:00Z', [22.5, 25]),
+      historyPlan(firstId, '2026-10-13T07:00:00Z', [20]),
+    ]);
+
+    const response = await api.get('/api/v1/workouts');
+
+    expect(response.status).toBe(200);
+    expect(findManyWorkouts).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: testMember.id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    );
+    expect(response.body.data[0]).toMatchObject({
+      id: secondId,
+      status: 'completed',
+      muscle: { slug: 'chest', name: 'Chest' },
+      setsLogged: 2,
+      setsPlanned: 2,
+      exercises: [{ slug: 'dumbbell-bench-press', bestWeightKg: 25, totalReps: 10 }],
+    });
+    expect(response.body.meta.progress.trends).toEqual([
+      expect.objectContaining({
+        slug: 'dumbbell-bench-press',
+        unit: 'kg',
+        improved: true,
+        points: [
+          expect.objectContaining({ workoutId: firstId, value: 20 }),
+          expect.objectContaining({ workoutId: secondId, value: 25 }),
+        ],
+      }),
+    ]);
+  });
+
+  it('filters by status and rejects an unknown status', async () => {
+    findManyWorkouts.mockResolvedValue([]);
+
+    expect((await api.get('/api/v1/workouts?status=started')).status).toBe(200);
+    expect(findManyWorkouts).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: testMember.id, status: 'started' } }),
+    );
+
+    const response = await api.get('/api/v1/workouts?status=lost');
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses the list without a session', async () => {
+    const response = await request(app).get('/api/v1/workouts');
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('UNAUTHENTICATED');
+    expect(findManyWorkouts).not.toHaveBeenCalled();
   });
 });

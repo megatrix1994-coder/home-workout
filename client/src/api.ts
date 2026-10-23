@@ -7,6 +7,18 @@ export type LoadState<T> =
 
 const RETRY_DELAY_MS = 300;
 
+let unauthorizedListener: (() => void) | null = null;
+
+export function onUnauthorized(listener: (() => void) | null) {
+  unauthorizedListener = listener;
+}
+
+function noteStatus(response: Response) {
+  if (response.status === 401) {
+    unauthorizedListener?.();
+  }
+}
+
 function wait(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
@@ -29,6 +41,7 @@ async function readBody<T>(response: Response): Promise<T> {
   const body = (await response.json().catch(() => null)) as {
     error?: { message?: string };
   } | null;
+  noteStatus(response);
   if (!response.ok) {
     throw Object.assign(new Error(body?.error?.message ?? 'Could not load this page.'), {
       statusCode: response.status,
@@ -108,6 +121,7 @@ export async function apiRequest<T>(
   const body = (await response.json().catch(() => null)) as {
     error?: { message?: string };
   } | null;
+  noteStatus(response);
   if (!response.ok) {
     throw Object.assign(
       new Error(body?.error?.message ?? 'Could not complete this request.'),

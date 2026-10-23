@@ -17,8 +17,10 @@ export function easierSlug(muscle: string) {
   return `cooldown-${muscle}-easier`;
 }
 
+const EASE_OFF = 'Ease off at once if you feel pain, numbness, or tingling.';
+
 function guide(setup: string, steps: string[], breathing: string, mistakes: string) {
-  const numbered = steps.map((step, index) => `${index + 1}. ${step}`).join('\n');
+  const numbered = [...steps, EASE_OFF].map((step, index) => `${index + 1}. ${step}`).join('\n');
   return `Setup: ${setup}\n${numbered}\nBreathing: ${breathing}\nCommon mistakes: ${mistakes}`;
 }
 

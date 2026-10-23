@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { usePrefersReducedMotion } from '../motion';
 import type { AnimationAsset } from '../types';
 
 const speeds = [0.5, 1, 1.5] as const;
@@ -47,14 +48,19 @@ export function Demonstration({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const video = approvedVideo(animations);
+  const reducedMotion = usePrefersReducedMotion();
+  const startSpeed = reducedMotion ? 0.5 : 1;
   const [failed, setFailed] = useState(false);
-  const [speed, setSpeed] = useState<(typeof speeds)[number]>(1);
+  const [speed, setSpeed] = useState<(typeof speeds)[number]>(startSpeed);
   const cues = splitCues(instructions);
 
   useEffect(() => {
     setFailed(false);
-    setSpeed(1);
-  }, [video?.assetUrl]);
+    setSpeed(startSpeed);
+    if (videoRef.current) {
+      videoRef.current.playbackRate = startSpeed;
+    }
+  }, [video?.assetUrl, startSpeed]);
 
   function play() {
     void videoRef.current?.play().catch(() => setFailed(true));
@@ -91,6 +97,9 @@ export function Demonstration({
             preload="metadata"
             aria-label="Exercise demonstration"
             onError={() => setFailed(true)}
+            onLoadedMetadata={(event) => {
+              event.currentTarget.playbackRate = speed;
+            }}
             className="w-full rounded-xl bg-paper"
           />
           <div className="mt-3 flex flex-wrap gap-2">
@@ -130,6 +139,12 @@ export function Demonstration({
           <p className="mt-3 text-sm text-muted">
             Original illustration of the movement. This is not filmed footage.
           </p>
+          {reducedMotion ? (
+            <p className="mt-1 text-sm text-muted">
+              Your device asks for reduced motion, so the clip starts at half speed and plays only
+              when you press Play.
+            </p>
+          ) : null}
         </div>
       ) : null}
       {cues ? (

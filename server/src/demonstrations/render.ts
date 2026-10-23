@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -7,12 +8,12 @@ import { cooldowns } from '../cooldowns.js';
 import { FRAME_COUNT, FRAME_RATE, paintFrame } from './draw.js';
 import { poseRecipe, stretchPose, type PoseRecipe } from './pose.js';
 
-const require = createRequire(path.resolve('package.json'));
+const packageRequire = createRequire(path.resolve('package.json'));
 export const demonstrationDir = path.resolve(process.cwd(), '../client/public/demonstrations');
 
 function ffmpegBinary() {
   try {
-    const resolved = require('ffmpeg-static') as string | null;
+    const resolved = packageRequire('ffmpeg-static') as string | null;
     if (resolved) {
       return resolved;
     }
@@ -114,13 +115,27 @@ export async function renderDemonstrations(
   await rm(path.join(demonstrationDir, '.frames'), { recursive: true, force: true });
 }
 
+export function missingClips(slugs: string[], outputDir = demonstrationDir) {
+  return slugs.filter((slug) => !existsSync(path.join(outputDir, `${slug}.mp4`)));
+}
+
+async function renderMissing() {
+  const exerciseSlugs = missingClips(exercises.map((exercise) => exercise.slug));
+  const cooldownSlugs = missingClips(cooldowns.map((stretch) => stretch.slug));
+  console.log(`Missing: ${exerciseSlugs.length} exercises, ${cooldownSlugs.length} cooldowns`);
+  if (exerciseSlugs.length > 0) await renderDemonstrations(exerciseSlugs, renderExercise);
+  if (cooldownSlugs.length > 0) await renderDemonstrations(cooldownSlugs, renderCooldown);
+}
+
 const entry = process.argv[1] ? path.resolve(process.argv[1]) : '';
 if (entry.endsWith(`${path.sep}render.ts`) || entry.endsWith(`${path.sep}render.js`)) {
   const only = process.argv[2];
   const job =
-    only === '--cooldowns'
-      ? renderDemonstrations(cooldowns.map((stretch) => stretch.slug), renderCooldown)
-      : renderDemonstrations(only ? [only] : undefined, renderExercise);
+    only === '--missing'
+      ? renderMissing()
+      : only === '--cooldowns'
+        ? renderDemonstrations(cooldowns.map((stretch) => stretch.slug), renderCooldown)
+        : renderDemonstrations(only ? [only] : undefined, renderExercise);
   job.catch((error: unknown) => {
     console.error(error);
     process.exit(1);

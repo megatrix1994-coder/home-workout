@@ -113,6 +113,12 @@ export const logSetSchema = z.object({
   weightKg: z.number().positive().max(500).nullable().optional(),
 });
 
+export const HISTORY_LIMIT = 50;
+
+export const historyQuerySchema = z.object({
+  status: z.enum(['draft', 'started', 'completed']).optional(),
+});
+
 export const updateCooldownSchema = z
   .object({
     durationSeconds: z.number().int().min(20).max(90).optional(),

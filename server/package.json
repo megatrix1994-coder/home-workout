@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "admin:create": "tsx scripts/create-admin.ts",
+    "content:sheet": "tsx scripts/content-review-sheet.ts",
     "demonstrations": "tsx src/demonstrations/render.ts",
     "postinstall": "prisma generate"
   },

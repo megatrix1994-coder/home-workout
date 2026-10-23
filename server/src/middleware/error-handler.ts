@@ -51,6 +51,21 @@ export function errorHandler(
     return;
   }
 
+  const bodyType =
+    typeof error === 'object' && error !== null && 'type' in error ? String(error.type) : '';
+  if (bodyType === 'entity.too.large') {
+    res.status(413).json({
+      error: { code: 'PAYLOAD_TOO_LARGE', message: 'The request body is too large.' },
+    });
+    return;
+  }
+  if (bodyType === 'entity.parse.failed') {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'The request body is not valid JSON.' },
+    });
+    return;
+  }
+
   if (isDatabaseUnavailable(error)) {
     res.status(503).json({
       error: {

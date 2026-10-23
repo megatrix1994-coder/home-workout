@@ -1,22 +1,14 @@
 import { useEffect, useState } from 'react';
 import { poses } from '../ambience';
+import { usePrefersReducedMotion } from '../motion';
 
 const SLIDE_MS = 6000;
 
 export function PoseSlideshow() {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
   const pose = poses[index];
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const apply = () => setReducedMotion(media.matches);
-    apply();
-    media.addEventListener('change', apply);
-    return () => media.removeEventListener('change', apply);
-  }, []);
 
   useEffect(() => {
     if (paused || reducedMotion) return;

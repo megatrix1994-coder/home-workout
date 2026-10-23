@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from './HomePage';
-import { DRAFT_WORKOUT_KEY, STARTED_WORKOUT_KEY } from '../storage';
 
 function renderHome() {
   render(
@@ -15,7 +14,6 @@ function renderHome() {
 
 describe('HomePage', () => {
   beforeEach(() => {
-    localStorage.clear();
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => ({
@@ -34,39 +32,47 @@ describe('HomePage', () => {
     );
   });
 
-  it('continues a started workout and opens a different draft', () => {
-    localStorage.setItem(STARTED_WORKOUT_KEY, 'started-1');
-    localStorage.setItem(DRAFT_WORKOUT_KEY, 'draft-1');
+  it('continues the newest started workout and opens the newest draft from your account', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input) === '/api/v1/workouts') {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              data: [
+                { id: 'draft-2', status: 'draft' },
+                { id: 'started-2', status: 'started' },
+                { id: 'completed-1', status: 'completed' },
+                { id: 'started-1', status: 'started' },
+                { id: 'draft-1', status: 'draft' },
+              ],
+              meta: {},
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ data: { suggestions: [] } }) };
+      }),
+    );
     renderHome();
 
-    expect(screen.getByRole('link', { name: 'Continue workout' })).toHaveAttribute(
+    expect(await screen.findByRole('link', { name: 'Continue workout' })).toHaveAttribute(
       'href',
-      '/workouts/started-1',
+      '/workouts/started-2',
     );
     expect(screen.getByRole('link', { name: 'Open saved draft' })).toHaveAttribute(
       'href',
-      '/workouts/draft-1',
+      '/workouts/draft-2',
     );
   });
 
-  it('hides the draft link when it is the workout already in progress', () => {
-    localStorage.setItem(STARTED_WORKOUT_KEY, 'same-1');
-    localStorage.setItem(DRAFT_WORKOUT_KEY, 'same-1');
+  it('shows no resume links when the account has no open workouts', async () => {
     renderHome();
 
-    expect(screen.getByRole('link', { name: 'Continue workout' })).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Open saved draft' })).not.toBeInTheDocument();
-  });
-
-  it('opens a draft saved by the previous resume link', () => {
-    localStorage.setItem('home-workout:last-workout', 'legacy-1');
-    renderHome();
-
-    expect(screen.getByRole('link', { name: 'Open saved draft' })).toHaveAttribute(
-      'href',
-      '/workouts/legacy-1',
-    );
+    expect(await screen.findByRole('link', { name: 'Build a workout' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Continue workout' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Open saved draft' })).not.toBeInTheDocument();
   });
 
   it('shows a suggested meal for a cut', async () => {
