@@ -70,6 +70,9 @@ test.describe('accessibility scans', () => {
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
     await expectNoSeriousViolations(page);
+    await page.goto('/privacy');
+    await expect(page.getByRole('heading', { name: 'Privacy notice' })).toBeVisible();
+    await expectNoSeriousViolations(page);
     await context.close();
   });
 

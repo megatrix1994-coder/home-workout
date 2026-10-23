@@ -48,11 +48,12 @@ The API entry point is `server/src/index.ts`. It loads environment variables and
 
 3. Client
 
-Routes, all inside the shared layout in `client/src/components/Layout.tsx`. `/login`, `/invite/:token`, and `/reset/:token` are open. Every other route sits behind `RequireUser` in `client/src/auth.tsx`, and `/admin` also sits behind `RequireAdmin`.
+Routes, all inside the shared layout in `client/src/components/Layout.tsx`. `/login`, `/privacy`, `/invite/:token`, and `/reset/:token` are open. Every other route sits behind `RequireUser` in `client/src/auth.tsx`, and `/admin` also sits behind `RequireAdmin`.
 
 | Path | Screen |
 | --- | --- |
 | `/login` | Sign in. Returns to the `next` path afterwards. Only same-site paths are followed. |
+| `/privacy` | Privacy notice: what is stored, where, and how to ask for a copy or deletion. |
 | `/invite/:token` | Create an account from an invite link. |
 | `/reset/:token` | Choose a new password from a reset link. |
 | `/account` | Change password and sign out. |
@@ -81,11 +82,14 @@ Accounts and access
 - Login, invite acceptance, password reset, and password change are limited to 10 attempts per 15 minutes per IP and key, in memory. Running more than one server process needs a shared store.
 - Admins cannot remove, demote, or delete themselves, and the last active admin cannot be removed or demoted.
 - `TRUST_PROXY` sets Express `trust proxy` for a host that terminates HTTPS. `PUBLIC_URL` sets the address used in invite and reset links.
-- Every response sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, and `X-Frame-Options: DENY`, and omits `X-Powered-By`. JSON bodies are capped at 100 KB.
+- Every response sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and a Content-Security-Policy that allows the app origin plus Google Fonts. `Strict-Transport-Security` is sent only when the request is HTTPS (`req.secure`, which needs `TRUST_PROXY` behind a TLS terminator). JSON bodies are capped at 100 KB.
+- `GET /api/health` is public. It runs `SELECT 1` through Prisma, is never cached, and returns `{ status: 'ok' }` or `503` `{ status: 'unavailable' }`.
+- `SIGTERM` and `SIGINT` close the HTTP server, disconnect Prisma, and exit. A second signal is ignored. The process force-exits after 10 seconds if drain stalls.
+- Hosted deploy is described in `render.yaml` and `DEPLOY.md`. GitHub Actions workflow `uptime.yml` pings `/api/health` when repository variable `PUBLIC_URL` is set.
 
 4. API
 
-All routes are mounted under `/api/v1` in `server/src/app.ts`. Successful bodies use `{ data }`. Failures use `{ error: { code, message, details? } }`. Unknown `/api` paths return `404` with code `NOT_FOUND`. Every route except `/api/v1/auth` needs a session and returns `401` with `UNAUTHENTICATED` without one.
+All routes are mounted under `/api/v1` in `server/src/app.ts`. Successful bodies use `{ data }`. Failures use `{ error: { code, message, details? } }`. Unknown `/api` paths return `404` with code `NOT_FOUND`. Every route except `/api/v1/auth` and `GET /api/health` needs a session and returns `401` with `UNAUTHENTICATED` without one.
 
 Auth
 

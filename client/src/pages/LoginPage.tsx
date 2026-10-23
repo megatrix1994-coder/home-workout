@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { safeNext, signInRequest, useAuth } from '../auth-context';
 import { FormError, TextField } from '../components/Form';
 import { errorMessage, primaryButtonClass } from '../components/form-styles';
@@ -62,7 +62,10 @@ export function LoginPage() {
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="text-sm text-muted">
-          Forgot your password? Ask the admin for a reset link.
+          Forgot your password? Ask the admin for a reset link.{' '}
+          <Link to="/privacy" className="underline">
+            Privacy notice
+          </Link>
         </p>
       </form>
     </>

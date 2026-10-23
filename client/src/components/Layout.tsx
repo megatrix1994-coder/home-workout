@@ -63,6 +63,14 @@ export function Layout() {
       <main className="mx-auto max-w-5xl px-5 py-10">
         <Outlet />
       </main>
+      <footer className="border-t border-line">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4 text-sm text-muted">
+          <p>Home Workout keeps each person&apos;s workouts on their own account.</p>
+          <NavLink to="/privacy" className="underline">
+            Privacy
+          </NavLink>
+        </div>
+      </footer>
     </div>
   );
 }

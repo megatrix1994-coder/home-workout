@@ -10,6 +10,7 @@ import { HistoryPage } from './pages/HistoryPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { MusclesPage } from './pages/MusclesPage';
+import { PrivacyPage } from './pages/PrivacyPage';
 import { NutritionPage } from './pages/NutritionPage';
 import { WorkoutBuilderPage } from './pages/WorkoutBuilderPage';
 import { WorkoutPage } from './pages/WorkoutPage';
@@ -19,6 +20,7 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/invite/:token" element={<AcceptInvitePage />} />
         <Route path="/reset/:token" element={<ResetPasswordPage />} />
         <Route element={<RequireUser />}>

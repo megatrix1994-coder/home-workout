@@ -11,6 +11,7 @@ const {
   groupExercises,
   findFirstExercise,
   findUniqueSession,
+  queryRaw,
 } = vi.hoisted(() => ({
   findUniqueSession: vi.fn(),
   findManyMuscles: vi.fn(),
@@ -18,10 +19,12 @@ const {
   countExercises: vi.fn(),
   groupExercises: vi.fn(),
   findFirstExercise: vi.fn(),
+  queryRaw: vi.fn(),
 }));
 
 vi.mock('./db', () => ({
   prisma: {
+    $queryRaw: queryRaw,
     session: { findUnique: findUniqueSession, update: vi.fn(), deleteMany: vi.fn() },
     muscleGroup: { findMany: findManyMuscles },
     exercise: {
@@ -41,6 +44,7 @@ const api = request.agent(app).set('Cookie', TEST_COOKIE).set('Sec-Fetch-Site', 
 
 beforeEach(() => {
   findUniqueSession.mockResolvedValue(sessionFor());
+  queryRaw.mockResolvedValue([{ '?column?': 1 }]);
 });
 
 const chestPress = {
@@ -254,7 +258,45 @@ describe('security and production serving', () => {
     expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(response.headers['referrer-policy']).toBe('no-referrer');
     expect(response.headers['x-frame-options']).toBe('DENY');
+    expect(response.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(response.headers['content-security-policy']).toContain("media-src 'self'");
+    expect(response.headers['strict-transport-security']).toBeUndefined();
     expect(response.headers['x-powered-by']).toBeUndefined();
+  });
+
+  it('reports health without a session and is never cached', async () => {
+    const response = await request(createApp()).get('/api/health');
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'ok' });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(queryRaw).toHaveBeenCalled();
+  });
+
+  it('returns 503 when the health query cannot reach the database', async () => {
+    queryRaw.mockRejectedValue(new Error("Can't reach database server"));
+    const response = await request(createApp()).get('/api/health');
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({ status: 'unavailable' });
+  });
+
+  it('sends HSTS only when the request arrived over HTTPS', async () => {
+    const previous = process.env.TRUST_PROXY;
+    process.env.TRUST_PROXY = '1';
+    try {
+      const response = await request(createApp())
+        .get('/api/health')
+        .set('X-Forwarded-Proto', 'https');
+      expect(response.status).toBe(200);
+      expect(response.headers['strict-transport-security']).toBe(
+        'max-age=31536000; includeSubDomains',
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TRUST_PROXY;
+      } else {
+        process.env.TRUST_PROXY = previous;
+      }
+    }
   });
 
   it('rejects a body over 100 kB and malformed JSON', async () => {

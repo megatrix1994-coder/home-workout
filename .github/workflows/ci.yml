@@ -54,7 +54,7 @@ jobs:
       - name: Wait for the app
         run: |
           for attempt in $(seq 1 60); do
-            if curl -fsS http://localhost:8080/login > /dev/null; then exit 0; fi
+            if curl -fsS http://localhost:8080/api/health > /dev/null; then exit 0; fi
             sleep 2
           done
           $COMPOSE logs app
@@ -68,6 +68,8 @@ jobs:
 
       - name: Smoke checks
         run: |
+          test "$(curl -s http://localhost:8080/api/health)" = '{"status":"ok"}'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login)" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/muscles)" = 401
           test "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: https://evil.example' \
             -H 'Content-Type: application/json' -d '{}' http://localhost:8080/api/v1/auth/login)" = 403

@@ -73,7 +73,7 @@ npm run test:e2e
 
 ## API
 
-Successful bodies use `{ data }`. Failures use `{ error: { code, message } }`. Every route except `/api/v1/auth` needs a signed-in session and returns `401` without one. A state-changing request must come from the app's own address or one listed in `CORS_ORIGIN`; anything else gets `403`. Browsers handle this on their own. A script calling the API must send a matching `Origin` header, for example `Origin: http://localhost:8080`.
+Successful bodies use `{ data }`. Failures use `{ error: { code, message } }`. Every route except `/api/v1/auth` and `GET /api/health` needs a signed-in session and returns `401` without one. A state-changing request must come from the app's own address or one listed in `CORS_ORIGIN`; anything else gets `403`. Browsers handle this on their own. A script calling the API must send a matching `Origin` header, for example `Origin: http://localhost:8080`.
 
 Auth
 
@@ -146,3 +146,22 @@ Production settings:
 - Session cookies are `Secure` in production, so browsers send them only over HTTPS or to `localhost`. `COOKIE_SECURE=false` turns that off for a plain-HTTP test on another machine. Do not use it for real users.
 
 Serve real users over HTTPS. Back up the PostgreSQL volume, because it holds every account and workout.
+
+### Hosted on Render
+
+See [DEPLOY.md](DEPLOY.md) for the first-time Render steps, go-live gates, rollback, and backup restore. The blueprint is [render.yaml](render.yaml). After the service URL exists, set GitHub Actions variable `PUBLIC_URL` so [`.github/workflows/uptime.yml`](.github/workflows/uptime.yml) pings `/api/health` every 15 minutes.
+
+### Health and shutdown
+
+- `GET /api/health` needs no session. It runs `SELECT 1` and returns `{ "status": "ok" }` or `503` `{ "status": "unavailable" }`. Responses are not cached. The Docker image and `docker-compose.prod.yml` probe this path.
+- `SIGTERM` and `SIGINT` stop accepting connections, disconnect Prisma, and then exit.
+
+### Go-live and rollback
+
+1. Apply the Render blueprint, set `CORS_ORIGIN` and `PUBLIC_URL` to the HTTPS address, seed, and create the admin (commands in [DEPLOY.md](DEPLOY.md)).
+2. Smoke-check `/api/health`, `/login`, a 401 without a session, and a 403 cross-site write.
+3. Run `set E2E_BASE_URL=https://your-service.onrender.com` then `npm run test:e2e` with a staging admin.
+4. Confirm daily backups and complete the gates in [content-review/GO_LIVE.md](content-review/GO_LIVE.md).
+5. To roll back: use the previous Render deploy, or check out a git tag such as `v1.0.0` and redeploy. Restore the Postgres backup first if a migration was the problem. Rotate the admin password from Account or `npm run admin:create`.
+
+The privacy notice is at `/privacy`.

@@ -1,0 +1,19 @@
+# Pings the hosted health endpoint every 15 minutes once PUBLIC_URL is set
+# as a GitHub Actions variable on this repository.
+name: Uptime
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: ${{ vars.PUBLIC_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check /api/health
+        run: |
+          set -e
+          body=$(curl -fsS "${{ vars.PUBLIC_URL }}/api/health")
+          test "$body" = '{"status":"ok"}'
