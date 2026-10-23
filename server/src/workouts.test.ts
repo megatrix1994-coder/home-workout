@@ -177,7 +177,21 @@ type StoredWorkout = {
     restSeconds: number;
     reason: string;
     exerciseId: string;
-    exercise: (typeof catalog)[number];
+    exercise: (typeof catalog)[number] & {
+      animations?: Array<{
+        id: string;
+        format: string;
+        assetUrl: string;
+        reviewStatus?: string;
+      }>;
+    };
+    setLogs?: Array<{
+      id: string;
+      round: number;
+      setNumber: number;
+      repsCompleted: number;
+      weightKg: number | null;
+    }>;
   }>;
 };
 
@@ -841,18 +855,18 @@ describe('workout API', () => {
         ...current!,
         cooldowns: data.map((row, index) => ({
           id: `cool-${index}`,
-          order: row.order,
-          durationSeconds: row.durationSeconds,
-          status: row.status,
-          muscleId: row.muscleId,
-          stretchId: row.stretchId,
-          muscle: { id: row.muscleId, slug: String(row.muscleId), name: String(row.muscleId) },
+          order: Number(row.order),
+          durationSeconds: Number(row.durationSeconds),
+          status: String(row.status),
+          muscleId: String(row.muscleId),
+          stretchId: String(row.stretchId),
+          muscle: { id: String(row.muscleId), slug: String(row.muscleId), name: String(row.muscleId) },
           stretch: {
-            id: row.stretchId,
+            id: String(row.stretchId),
             slug: String(row.stretchId),
             name: String(row.stretchId),
             instructions: 'Setup: Hold.\n1. Relax.\nBreathing: Easy.\nCommon mistakes: Do not bounce.',
-            durationSeconds: row.durationSeconds,
+            durationSeconds: Number(row.durationSeconds),
             animations: [],
           },
         })),

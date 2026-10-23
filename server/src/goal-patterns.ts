@@ -1,6 +1,7 @@
 import type {
   CatalogueExercise,
   Difficulty,
+  EquipmentCategory,
   EquipmentSlug,
   MovementType,
   MuscleSlug,
@@ -129,6 +130,71 @@ function primaryMuscle(exercise: ListedExercise): string {
   return exercise.muscles.find((muscle) => muscle.role === 'primary')?.slug ?? '';
 }
 
+const kitCategories: EquipmentCategory[] = ['free_weight', 'machine', 'bodyweight'];
+const aimGoals: TrainingGoal[] = ['strength', 'hypertrophy'];
+
+function kitOf(slug: string): EquipmentCategory | undefined {
+  return categoryByEquipment[slug];
+}
+
+function kitSlug(category: EquipmentCategory): string {
+  if (category === 'free_weight') return 'free-weight';
+  return category;
+}
+
+function gluteArea(region: string): string {
+  if (region === 'thrust') {
+    return ' It targets the lower and middle gluteus maximus.';
+  }
+  if (region === 'kickback') {
+    return ' It targets the upper gluteus maximus.';
+  }
+  return '';
+}
+
+function aimCue(goal: TrainingGoal): string | undefined {
+  if (goal === 'strength') {
+    return 'Move with control and stop each rep cleanly. This version is for strength.';
+  }
+  if (goal === 'hypertrophy') {
+    return 'Use a full comfortable range and squeeze the muscle. This version is for muscle growth.';
+  }
+  return undefined;
+}
+
+function slotKey(
+  muscle: string,
+  region: string,
+  difficulty: Difficulty,
+  goal: TrainingGoal,
+  category: EquipmentCategory,
+): string {
+  return `${muscle}:${region}:${difficulty}:${goal}:${category}`;
+}
+
+function templateFor(
+  muscle: MuscleSlug,
+  region: string,
+  category: EquipmentCategory,
+): Pattern | undefined {
+  const preferred =
+    category === 'free_weight' ? 'strength' : category === 'machine' ? 'hypertrophy' : 'general_fitness';
+  const matches = patterns.filter(
+    (pattern) =>
+      pattern.muscle === muscle &&
+      pattern.region === region &&
+      kitOf(pattern.equipment) === category,
+  );
+  return [...matches].sort((left, right) => {
+    const movement =
+      (left.movementType === 'isometric' ? 1 : 0) - (right.movementType === 'isometric' ? 1 : 0);
+    if (movement !== 0) return movement;
+    const goal = (left.goal === preferred ? 0 : 1) - (right.goal === preferred ? 0 : 1);
+    if (goal !== 0) return goal;
+    return left.name.localeCompare(right.name);
+  })[0];
+}
+
 function scoreGoal(exercise: ListedExercise, goal: TrainingGoal): number {
   const category = categoryByEquipment[exercise.equipment[0] ?? ''];
   const movement = exercise.movementType;
@@ -245,14 +311,14 @@ const patterns: Pattern[] = [
   row('hamstrings', 'knee-flexion', 'hypertrophy', 'isolation', 'leg-curl-machine', 'Machine leg curl', 'Lie or sit in the leg curl with the pad on the lower legs.', ['Curl the heels toward the hips.', 'Squeeze for a moment.', 'Lower until the knees stay softly bent.'], 'Exhale as you curl. Inhale as you lower.', 'Lifting the hips off the pad, or kicking the weight.'),
   row('hamstrings', 'knee-flexion', 'general_fitness', 'isolation', 'bodyweight', 'Bodyweight leg curl', 'Lie face down and bend the knees, digging the heels toward the hips.', ['Curl as far as the hips stay down.', 'Lower slowly.', 'Keep the front of the hips on the floor.'], 'Exhale as you curl. Inhale as you lower.', 'Lifting the hips, or rushing the lower.'),
   row('hamstrings', 'knee-flexion', 'endurance', 'isometric', 'bodyweight', 'Leg curl hold', 'Lie face down and bend the knees to about a right angle.', ['Hold the bend.', 'Keep the hips down.', 'Keep the ankles relaxed.'], 'Breathe steadily through the hold.', 'Lifting the hips, or holding the breath.'),
-  row('glutes', 'thrust', 'strength', 'compound', 'dumbbell', 'Dumbbell hip thrust', 'Sit on the floor with the upper back against a sturdy surface and a dumbbell across the hips.', ['Drive the hips up until the body is a straight line.', 'Squeeze the glutes.', 'Lower with control.'], 'Exhale as you lift. Inhale as you lower.', 'Overarching the lower back, or pushing through the neck.'),
-  row('glutes', 'thrust', 'hypertrophy', 'isolation', 'glute-drive-machine', 'Machine glute drive', 'Sit in the glute drive with the back on the pad and the feet flat.', ['Press the hips forward until the body is straight.', 'Squeeze for a moment.', 'Return without sitting all the way down if the back rounds.'], 'Exhale as you press. Inhale as you return.', 'Overarching the lower back, or letting the knees cave in.'),
-  row('glutes', 'thrust', 'general_fitness', 'compound', 'bodyweight', 'Bodyweight hip thrust', 'Lie on the floor with the knees bent and the feet flat.', ['Lift the hips until the body is a straight line from shoulders to knees.', 'Squeeze the glutes.', 'Lower with control.'], 'Exhale as you lift. Inhale as you lower.', 'Overarching the lower back, or pushing the feet away.'),
-  row('glutes', 'thrust', 'endurance', 'isometric', 'bodyweight', 'Hip thrust hold', 'Lie with the knees bent and lift the hips into a straight line.', ['Hold the lift.', 'Keep the ribs down.', 'Press through the heels.'], 'Breathe steadily through the hold.', 'Overarching the back, or holding the breath.'),
-  row('glutes', 'kickback', 'strength', 'isolation', 'dumbbell', 'Dumbbell glute kickback', 'Hinge and rest one hand on a sturdy surface, with a light dumbbell behind the working knee.', ['Kick the heel back and slightly up.', 'Keep the knee softly bent.', 'Return without arching the lower back.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or swinging the dumbbell.'),
-  row('glutes', 'kickback', 'hypertrophy', 'isolation', 'cable-machine', 'Cable glute kickback', 'Face the cable machine and attach a low cuff, or hold a low handle behind the knee area with care.', ['Kick the working leg back.', 'Squeeze the glute.', 'Return without letting the hips twist.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or leaning away from the cable.'),
-  row('glutes', 'kickback', 'general_fitness', 'isolation', 'bodyweight', 'Bodyweight glute kickback', 'Rest on the hands and knees.', ['Kick one heel back and up.', 'Keep the hips square.', 'Return the knee under the hip.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or rotating the hips open.'),
-  row('glutes', 'kickback', 'endurance', 'isometric', 'bodyweight', 'Glute kickback hold', 'Rest on the hands and knees and lift one heel back in line with the hip.', ['Hold the lift.', 'Keep the hips square.', 'Keep the neck long.'], 'Breathe steadily through the hold.', 'Arching the lower back, or holding the breath.'),
+  row('glutes', 'thrust', 'strength', 'compound', 'dumbbell', 'Dumbbell hip thrust', 'Sit with the upper back resting on a bench and a dumbbell across the hips.', ['Drive the hips up until the body is a straight line.', 'Squeeze the lower and middle gluteus maximus.', 'Lower with control.'], 'Exhale as you lift. Inhale as you lower.', 'Overarching the lower back, or pushing through the neck.'),
+  row('glutes', 'thrust', 'hypertrophy', 'isolation', 'glute-drive-machine', 'Machine glute drive', 'Sit in the glute drive with the back on the pad and the feet flat.', ['Press the hips forward until the body is straight.', 'Squeeze the lower and middle gluteus maximus.', 'Return without sitting all the way down if the back rounds.'], 'Exhale as you press. Inhale as you return.', 'Overarching the lower back, or letting the knees cave in.'),
+  row('glutes', 'thrust', 'general_fitness', 'compound', 'bodyweight', 'Bodyweight hip thrust', 'Lie on the floor with the knees bent and the feet flat.', ['Lift the hips until the body is a straight line from shoulders to knees.', 'Squeeze the lower and middle gluteus maximus.', 'Lower with control.'], 'Exhale as you lift. Inhale as you lower.', 'Overarching the lower back, or pushing the feet away.'),
+  row('glutes', 'thrust', 'endurance', 'isometric', 'bodyweight', 'Hip thrust hold', 'Lie with the knees bent and lift the hips into a straight line.', ['Hold the lift and squeeze the lower and middle gluteus maximus.', 'Keep the ribs down.', 'Press through the heels.'], 'Breathe steadily through the hold.', 'Overarching the back, or holding the breath.'),
+  row('glutes', 'kickback', 'strength', 'isolation', 'dumbbell', 'Dumbbell glute kickback', 'Hinge and rest one hand on a sturdy surface, with a light dumbbell behind the working knee.', ['Kick the heel back and slightly up.', 'Squeeze the upper gluteus maximus while the gluteus medius keeps the hip square.', 'Return without arching the lower back.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or swinging the dumbbell.'),
+  row('glutes', 'kickback', 'hypertrophy', 'isolation', 'cable-machine', 'Cable glute kickback', 'Face the cable machine and attach a low cuff, or hold a low handle behind the knee area with care.', ['Kick the working leg back.', 'Squeeze the upper gluteus maximus while the gluteus medius keeps the hip square.', 'Return without letting the hips twist.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or leaning away from the cable.'),
+  row('glutes', 'kickback', 'general_fitness', 'isolation', 'bodyweight', 'Bodyweight glute kickback', 'Rest on the hands and knees.', ['Kick one heel back and up.', 'Squeeze the upper gluteus maximus and keep the hips square.', 'Return the knee under the hip.'], 'Exhale as you kick. Inhale as you return.', 'Arching the lower back, or rotating the hips open.'),
+  row('glutes', 'kickback', 'endurance', 'isometric', 'bodyweight', 'Glute kickback hold', 'Rest on the hands and knees and lift one heel back in line with the hip.', ['Hold the lift and squeeze the upper gluteus maximus.', 'Keep the hips square.', 'Keep the neck long.'], 'Breathe steadily through the hold.', 'Arching the lower back, or holding the breath.'),
   row('calves', 'standing', 'strength', 'isolation', 'dumbbell', 'Dumbbell standing calf raise', 'Stand tall holding a dumbbell in one hand and a support with the other.', ['Rise onto the balls of the feet.', 'Pause at the top.', 'Lower the heels slowly.'], 'Exhale as you rise. Inhale as you lower.', 'Bouncing at the bottom, or bending the knees.'),
   row('calves', 'standing', 'hypertrophy', 'isolation', 'standing-calf-machine', 'Machine standing calf raise', 'Stand in the calf machine with the shoulders under the pads and the balls of the feet on the step.', ['Rise as high as the ankles allow.', 'Pause and squeeze.', 'Lower the heels under control.'], 'Exhale as you rise. Inhale as you lower.', 'Bouncing, or bending the knees to help.'),
   row('calves', 'standing', 'general_fitness', 'isolation', 'bodyweight', 'Bodyweight standing calf raise', 'Stand tall and hold a wall for balance.', ['Rise onto the balls of the feet.', 'Lower the heels slowly.', 'Keep the knees softly straight.'], 'Exhale as you rise. Inhale as you lower.', 'Bouncing, or rolling the ankles out.'),
@@ -329,21 +395,72 @@ export function fillGoalExercises(listed: ListedExercise[]): CatalogueExercise[]
     goal: goalBySlug.get(exercise.slug) ?? 'general_fitness',
   }));
 
-  const filled = new Set(
-    tagged
-      .filter((exercise) => primarySlugs.has(exercise.slug))
-      .map(
-        (exercise) =>
-          `${primaryMuscle(exercise)}:${exercise.region}:${exercise.difficulty}:${exercise.goal}`,
+  const filled = new Set<string>();
+  for (const exercise of tagged) {
+    if (!primarySlugs.has(exercise.slug)) continue;
+    const category = kitOf(exercise.equipment[0] ?? '');
+    if (!category) continue;
+    filled.add(
+      slotKey(
+        primaryMuscle(exercise),
+        exercise.region,
+        exercise.difficulty,
+        exercise.goal,
+        category,
       ),
-  );
+    );
+  }
   const usedSlugs = new Set(tagged.map((exercise) => exercise.slug));
   const usedNames = new Set(tagged.map((exercise) => exercise.name.toLowerCase()));
   const generated: CatalogueExercise[] = [];
 
+  function addGenerated(input: {
+    slug: string;
+    name: string;
+    difficulty: Difficulty;
+    goal: TrainingGoal;
+    pattern: Pattern;
+    category: EquipmentCategory;
+    cue?: string;
+  }) {
+    if (usedSlugs.has(input.slug)) {
+      throw new Error(`Duplicate exercise slug: ${input.slug}`);
+    }
+    usedSlugs.add(input.slug);
+    usedNames.add(input.name.toLowerCase());
+    filled.add(
+      slotKey(
+        input.pattern.muscle,
+        input.pattern.region,
+        input.difficulty,
+        input.goal,
+        input.category,
+      ),
+    );
+    const steps = [
+      ...input.pattern.steps,
+      levelStep(input.difficulty, input.pattern.movementType),
+      ...(input.cue ? [input.cue] : []),
+    ];
+    generated.push({
+      slug: input.slug,
+      name: input.name,
+      description: `A ${input.difficulty} ${goalText[input.goal]} version of the ${input.pattern.name}.${gluteArea(input.pattern.region)}`,
+      instructions: guide(input.pattern.setup, steps, input.pattern.breathing, input.pattern.mistakes),
+      difficulty: input.difficulty,
+      movementType: input.pattern.movementType,
+      region: input.pattern.region,
+      goal: input.goal,
+      muscles: [{ slug: input.pattern.muscle, role: 'primary' }],
+      equipment: [input.pattern.equipment],
+    });
+  }
+
   for (const pattern of patterns) {
+    const category = kitOf(pattern.equipment);
+    if (!category) continue;
     for (const difficulty of difficulties) {
-      const key = `${pattern.muscle}:${pattern.region}:${difficulty}:${pattern.goal}`;
+      const key = slotKey(pattern.muscle, pattern.region, difficulty, pattern.goal, category);
       if (filled.has(key)) {
         continue;
       }
@@ -351,30 +468,54 @@ export function fillGoalExercises(listed: ListedExercise[]): CatalogueExercise[]
       if (usedNames.has(name.toLowerCase())) {
         name = `${name} (${pattern.region})`;
       }
-      const slug = `${pattern.muscle}-${pattern.region}-${pattern.goal}-${difficulty}`;
-      if (usedSlugs.has(slug)) {
-        throw new Error(`Duplicate exercise slug: ${slug}`);
-      }
-      usedSlugs.add(slug);
-      usedNames.add(name.toLowerCase());
-      filled.add(key);
-      generated.push({
-        slug,
+      addGenerated({
+        slug: `${pattern.muscle}-${pattern.region}-${pattern.goal}-${difficulty}`,
         name,
-        description: `A ${difficulty} ${goalText[pattern.goal]} version of the ${pattern.name}.`,
-        instructions: guide(
-          pattern.setup,
-          [...pattern.steps, levelStep(difficulty, pattern.movementType)],
-          pattern.breathing,
-          pattern.mistakes,
-        ),
         difficulty,
-        movementType: pattern.movementType,
-        region: pattern.region,
         goal: pattern.goal,
-        muscles: [{ slug: pattern.muscle, role: 'primary' }],
-        equipment: [pattern.equipment],
+        pattern,
+        category,
       });
+    }
+  }
+
+  const regions = new Map<string, { muscle: MuscleSlug; region: string }>();
+  for (const pattern of patterns) {
+    regions.set(`${pattern.muscle}:${pattern.region}`, {
+      muscle: pattern.muscle,
+      region: pattern.region,
+    });
+  }
+
+  for (const { muscle, region } of regions.values()) {
+    for (const category of kitCategories) {
+      const template = templateFor(muscle, region, category);
+      if (!template) {
+        throw new Error(`No ${category} pattern for ${muscle} ${region}`);
+      }
+      for (const difficulty of difficulties) {
+        for (const goal of aimGoals) {
+          const key = slotKey(muscle, region, difficulty, goal, category);
+          if (filled.has(key)) continue;
+          const base = levelName(template.name, difficulty);
+          let name = base;
+          if (usedNames.has(name.toLowerCase())) {
+            name = `${base} for ${goalText[goal]}`;
+          }
+          if (usedNames.has(name.toLowerCase())) {
+            name = `${base} for ${goalText[goal]} (${region})`;
+          }
+          addGenerated({
+            slug: `${muscle}-${region}-${goal}-${kitSlug(category)}-${difficulty}`,
+            name,
+            difficulty,
+            goal,
+            pattern: template,
+            category,
+            cue: aimCue(goal),
+          });
+        }
+      }
     }
   }
 

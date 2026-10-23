@@ -105,7 +105,7 @@ describe('NutritionPage', () => {
   });
 
   it('sends a cut intent and keeps the guidance sentence', async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL) =>
       jsonResponse({
         data: { guidance, goal: null, intent: 'cut', meals: [meal] },
       }),

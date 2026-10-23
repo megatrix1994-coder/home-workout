@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { muscleImage, muscleMark } from '../ambience';
 import { useApi } from '../api';
 import { PageNav } from '../components/PageNav';
 import { EmptyState, ErrorState, LoadingState, PageIntro } from '../components/Status';
@@ -46,20 +47,48 @@ export function MusclesPage() {
               <section key={region}>
                 <h2 className="font-display text-3xl font-semibold">{region}</h2>
                 <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {muscles.map((muscle) => (
+                  {muscles.map((muscle) => {
+                    const src = muscleImage(muscle.slug);
+                    const mark = muscleMark[muscle.slug] ?? { top: '46%', left: '50%' };
+                    return (
                     <li key={muscle.id}>
                       <Link
                         to={`/exercises?muscle=${muscle.slug}`}
-                        className="block rounded-2xl border border-line bg-card p-5 hover:border-accent"
+                        className="relative block overflow-hidden rounded-2xl border border-line bg-card hover:border-accent"
                       >
-                        <span className="font-display text-3xl font-semibold">{muscle.name}</span>
-                        <span className="mt-2 block text-sm text-muted">
-                          {muscle.exerciseCount}{' '}
-                          {muscle.exerciseCount === 1 ? 'exercise' : 'exercises'}
+                        {src ? (
+                          <img
+                            src={src}
+                            alt=""
+                            className="aspect-square w-full object-cover"
+                            style={
+                              mark.scale
+                                ? {
+                                    transform: `scale(${mark.scale})`,
+                                    transformOrigin: `${mark.left} ${mark.top}`,
+                                  }
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          <span className="block aspect-square" />
+                        )}
+                        <span
+                          className="absolute flex max-w-[78%] -translate-x-1/2 -translate-y-1/2 flex-col items-center rounded-xl bg-paper/80 px-2.5 py-1.5 text-center"
+                          style={{ top: mark.top, left: mark.left }}
+                        >
+                          <span className="font-display text-xl font-semibold leading-tight">
+                            {muscle.name}
+                          </span>
+                          <span className="mt-1 text-sm text-muted">
+                            {muscle.exerciseCount}{' '}
+                            {muscle.exerciseCount === 1 ? 'exercise' : 'exercises'}
+                          </span>
                         </span>
                       </Link>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </section>
             );

@@ -121,6 +121,120 @@ describe('catalogue seed data', () => {
     }
   });
 
+  it('adds barbell chest presses and bench-supported free-weight options', () => {
+    const bySlug = new Map(exercises.map((exercise) => [exercise.slug, exercise]));
+
+    expect(bySlug.get('barbell-bench-press')).toMatchObject({
+      region: 'mid',
+      difficulty: 'intermediate',
+      equipment: ['barbell'],
+    });
+    expect(bySlug.get('incline-barbell-press')).toMatchObject({
+      region: 'upper',
+      difficulty: 'intermediate',
+      equipment: ['barbell'],
+    });
+    expect(bySlug.get('incline-barbell-press')?.muscles).toEqual(
+      expect.arrayContaining([
+        { slug: 'chest', role: 'primary' },
+        { slug: 'shoulders', role: 'secondary' },
+        { slug: 'triceps', role: 'secondary' },
+      ]),
+    );
+    expect(bySlug.get('decline-barbell-press')).toMatchObject({
+      region: 'lower',
+      difficulty: 'intermediate',
+      equipment: ['barbell'],
+    });
+    expect(bySlug.get('bench-dumbbell-press')).toMatchObject({
+      region: 'mid',
+      difficulty: 'beginner',
+      equipment: ['dumbbell'],
+    });
+
+    for (const slug of [
+      'bench-hex-press',
+      'chest-supported-dumbbell-row',
+      'incline-chest-supported-reverse-fly',
+      'seated-dumbbell-shoulder-press',
+      'bench-overhead-dumbbell-extension',
+      'chest-supported-dumbbell-kickback',
+      'bench-close-grip-dumbbell-press',
+    ]) {
+      expect(bySlug.has(slug), slug).toBe(true);
+    }
+
+    expect(bySlug.get('dumbbell-pullover')?.instructions).toContain('bench');
+    expect(bySlug.get('dumbbell-hip-thrust')?.instructions.toLowerCase()).toContain('bench');
+  });
+
+  it('names the glute area on every glute exercise', () => {
+    const glutes = exercises.filter((exercise) =>
+      exercise.muscles.some((muscle) => muscle.slug === 'glutes' && muscle.role === 'primary'),
+    );
+    expect(glutes.length).toBeGreaterThan(0);
+    for (const exercise of glutes) {
+      if (exercise.region === 'thrust') {
+        expect(exercise.description, exercise.slug).toContain('gluteus maximus');
+        expect(exercise.description, exercise.slug).not.toContain('upper gluteus maximus');
+      } else if (exercise.region === 'kickback') {
+        expect(exercise.description, exercise.slug).toContain('upper gluteus maximus');
+      }
+    }
+  });
+
+  it('gives every region strength and muscle growth on each kit and difficulty', () => {
+    const expected: Record<string, string[]> = {
+      chest: ['mid', 'upper', 'lower', 'pecs'],
+      back: ['lats', 'mid-back', 'upper-back', 'lower-back'],
+      biceps: ['overall', 'short-head', 'long-head', 'brachialis'],
+      triceps: ['long-head', 'lateral-head', 'medial-head'],
+      forearms: ['flexors', 'extensors'],
+      quadriceps: ['squat', 'single-leg', 'knee-extension'],
+      hamstrings: ['hip-hinge', 'knee-flexion'],
+      glutes: ['thrust', 'kickback'],
+      calves: ['standing', 'seated'],
+      shoulders: ['front-delt', 'side-delt', 'rear-delt'],
+      abdominals: ['abdominals', 'obliques', 'brace'],
+    };
+    const categories = ['free_weight', 'machine', 'bodyweight'] as const;
+    const goals = ['strength', 'hypertrophy'] as const;
+    const levels = ['beginner', 'intermediate', 'advanced'] as const;
+
+    for (const [muscle, regions] of Object.entries(expected)) {
+      for (const region of regions) {
+        for (const category of categories) {
+          for (const goal of goals) {
+            for (const difficulty of levels) {
+              const found = exercises.some(
+                (exercise) =>
+                  exercise.region === region &&
+                  exercise.goal === goal &&
+                  exercise.difficulty === difficulty &&
+                  exercise.muscles.some(
+                    (link) => link.slug === muscle && link.role === 'primary',
+                  ) &&
+                  exercise.equipment.some(
+                    (slug) => equipment.find((item) => item.slug === slug)?.category === category,
+                  ),
+              );
+              expect(found, `${muscle} ${region} ${goal} ${category} ${difficulty}`).toBe(true);
+            }
+          }
+        }
+      }
+    }
+
+    const bodyweightStrength = exercises.find(
+      (exercise) => exercise.slug === 'chest-mid-strength-bodyweight-beginner',
+    );
+    expect(bodyweightStrength?.instructions).toContain('This version is for strength.');
+    const freeWeightGrowth = exercises.find(
+      (exercise) => exercise.slug === 'chest-mid-hypertrophy-free-weight-intermediate',
+    );
+    expect(freeWeightGrowth?.instructions).toContain('This version is for muscle growth.');
+  });
+
   it('gives every region a beginner, intermediate, and advanced exercise for each goal', () => {
     const expected: Record<string, string[]> = {
       chest: ['mid', 'upper', 'lower', 'pecs'],

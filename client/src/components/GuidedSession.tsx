@@ -300,7 +300,7 @@ export function GuidedSession({
             type="button"
             disabled={pending}
             onClick={() => void updateCooldown({ status: 'completed' })}
-            className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-50"
+            className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent disabled:opacity-50"
           >
             Done
           </button>
@@ -369,7 +369,7 @@ export function GuidedSession({
             setWarmupIndex(next);
             setWarmupSeconds(workout.warmups[next]?.durationSeconds ?? 0);
           }}
-          className="mt-6 rounded-full bg-accent px-5 py-2.5 font-semibold text-white"
+          className="mt-6 rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent"
         >
           {last ? 'Start exercises' : 'Next warm-up'}
         </button>
@@ -489,7 +489,7 @@ export function GuidedSession({
             type="button"
             disabled={pending}
             onClick={() => void completeSet()}
-            className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-50"
+            className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent disabled:opacity-50"
           >
             {pending ? 'Saving…' : 'Complete set'}
           </button>

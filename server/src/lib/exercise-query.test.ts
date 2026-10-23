@@ -55,6 +55,13 @@ describe('exercise list query', () => {
     });
   });
 
+  it('filters by region and ignores a blank region', () => {
+    const query = exerciseListQuerySchema.parse({ region: ' mid ' });
+    expect(query.region).toBe('mid');
+    expect(buildExerciseWhere(query)).toEqual({ region: 'mid' });
+    expect(buildExerciseWhere(exerciseListQuerySchema.parse({ region: '  ' })).region).toBeUndefined();
+  });
+
   it('rejects an unknown equipment category', () => {
     expect(() =>
       exerciseListQuerySchema.parse({ equipmentCategory: 'kettlebell' }),

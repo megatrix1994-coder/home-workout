@@ -5,6 +5,38 @@ export type LoadState<T> =
   | { status: 'error'; message: string; statusCode?: number }
   | { status: 'ready'; data: T };
 
+const RETRY_DELAY_MS = 300;
+
+function wait(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException('Aborted', 'AbortError'));
+      },
+      { once: true },
+    );
+  });
+}
+
+async function readBody<T>(response: Response): Promise<T> {
+  const body = (await response.json().catch(() => null)) as {
+    error?: { message?: string };
+  } | null;
+  if (!response.ok) {
+    throw Object.assign(new Error(body?.error?.message ?? 'Could not load this page.'), {
+      statusCode: response.status,
+    });
+  }
+  return body as T;
+}
+
 export function useApi<T>(path: string) {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<LoadState<T>>({ status: 'loading' });
@@ -14,21 +46,16 @@ export function useApi<T>(path: string) {
     let active = true;
     setState({ status: 'loading' });
 
-    fetch(path, { signal: controller.signal })
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        if (!response.ok) {
-          throw Object.assign(
-            new Error(body?.error?.message ?? 'Could not load this page.'),
-            {
-              statusCode: response.status,
-            },
-          );
-        }
-        return body as T;
-      })
+    async function load() {
+      const first = await fetch(path, { signal: controller.signal });
+      if (first.status !== 503) {
+        return readBody<T>(first);
+      }
+      await wait(RETRY_DELAY_MS, controller.signal);
+      return readBody<T>(await fetch(path, { signal: controller.signal }));
+    }
+
+    load()
       .then((data) => {
         if (active) {
           setState({ status: 'ready', data });

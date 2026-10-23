@@ -97,7 +97,7 @@ export function Demonstration({
             <button
               type="button"
               onClick={play}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
+              className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
             >
               Play
             </button>

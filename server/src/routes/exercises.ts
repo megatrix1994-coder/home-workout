@@ -119,7 +119,8 @@ exercisesRouter.get(
   asyncHandler(async (req, res) => {
     const query = exerciseListQuerySchema.parse(req.query);
     const where = buildExerciseWhere(query);
-    const [exercises, total] = await Promise.all([
+    const regionWhere = buildExerciseWhere({ ...query, region: undefined });
+    const [exercises, total, regionRows] = await Promise.all([
       prisma.exercise.findMany({
         where,
         include: exerciseInclude,
@@ -128,11 +129,20 @@ exercisesRouter.get(
         take: query.limit,
       }),
       prisma.exercise.count({ where }),
+      prisma.exercise.groupBy({
+        by: ['region'],
+        where: regionWhere,
+      }),
     ]);
 
     res.json({
       data: exercises.map((exercise) => serializeExercise(exercise, false)),
-      meta: { total, limit: query.limit, offset: query.offset },
+      meta: {
+        total,
+        limit: query.limit,
+        offset: query.offset,
+        regions: regionRows.map((row) => row.region).sort(),
+      },
     });
   }),
 );

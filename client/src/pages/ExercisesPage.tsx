@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useApi } from '../api';
+import { muscleBackdrop } from '../ambience';
+import { useApi, type LoadState } from '../api';
 import { labelDifficulty, labelEquipmentCategory, labelGoal, labelRegion, labelRole } from '../labels';
 import { PageNav } from '../components/PageNav';
 import { EmptyState, ErrorState, LoadingState, PageIntro } from '../components/Status';
@@ -75,6 +76,22 @@ function PageButtons({
   );
 }
 
+function muscleOptions(muscles: LoadState<ListResponse<MuscleGroup>>, selected: string) {
+  const listed = muscles.status === 'ready' ? muscles.data.data : [];
+  if (selected && !listed.some((item) => item.slug === selected)) {
+    return [{ id: selected, slug: selected, name: selected, anatomicalRegion: '', exerciseCount: 0 }, ...listed];
+  }
+  return listed;
+}
+
+function areaOptions(regions: string[], selected: string) {
+  const listed = [...regions].sort((left, right) => labelRegion(left).localeCompare(labelRegion(right)));
+  if (selected && !listed.includes(selected)) {
+    return [selected, ...listed];
+  }
+  return listed;
+}
+
 function rangeLabel(offset: number, count: number, total: number) {
   const noun = total === 1 ? 'exercise' : 'exercises';
   if (count === 0 || total === 0) {
@@ -87,11 +104,13 @@ export function ExercisesPage() {
   const [params, setParams] = useSearchParams();
   const search = params.get('search') ?? '';
   const muscle = params.get('muscle') ?? '';
+  const region = params.get('region') ?? '';
   const equipment = params.get('equipment') ?? '';
   const difficulty = params.get('difficulty') ?? '';
   const goal = params.get('goal') ?? '';
   const offset = Number(params.get('offset') ?? '0') || 0;
   const [searchDraft, setSearchDraft] = useState(search);
+  const backdrop = muscleBackdrop(muscle);
 
   useEffect(() => {
     setSearchDraft(search);
@@ -102,6 +121,7 @@ export function ExercisesPage() {
   if (offset > 0) query.set('offset', String(offset));
   if (search) query.set('search', search);
   if (muscle) query.set('muscle', muscle);
+  if (region) query.set('region', region);
   if (equipment) query.set('equipmentCategory', equipment);
   if (difficulty) query.set('difficulty', difficulty);
   if (goal) query.set('goal', goal);
@@ -117,6 +137,9 @@ export function ExercisesPage() {
       next.set(key, value);
     } else {
       next.delete(key);
+    }
+    if (key === 'muscle') {
+      next.delete('region');
     }
     next.delete('offset');
     setParams(next);
@@ -141,10 +164,19 @@ export function ExercisesPage() {
           { to: '/workouts/new', label: 'Build a workout' },
         ]}
       />
-      <PageIntro eyebrow="Library" title="Exercises">
+      <PageIntro
+        eyebrow="Library"
+        title="Exercises"
+        className={
+          backdrop
+            ? 'rounded-2xl bg-cover bg-center p-5 shadow-[inset_0_0_0_1000px_rgb(18_16_14/0.55)]'
+            : undefined
+        }
+        style={backdrop ? { backgroundImage: backdrop } : undefined}
+      >
         <p>
-          Search by name, or narrow the list to a muscle group, a goal, a difficulty, and the
-          equipment you have.
+          Search by name, or narrow the list to a muscle group, an area, a goal, a difficulty,
+          and the equipment you have.
         </p>
       </PageIntro>
       <form
@@ -171,13 +203,37 @@ export function ExercisesPage() {
             className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2 font-normal"
           >
             <option value="">All muscles</option>
-            {muscles.status === 'ready'
-              ? muscles.data.data.map((item) => (
-                  <option key={item.id} value={item.slug}>
-                    {item.name}
-                  </option>
-                ))
-              : null}
+            {muscleOptions(muscles, muscle).map((item) => (
+              <option key={item.slug} value={item.slug}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          {muscles.status === 'error' ? (
+            <p className="mt-1 font-normal text-danger">
+              {muscles.message}{' '}
+              <button type="button" onClick={muscles.retry} className="font-semibold underline">
+                Try again
+              </button>
+            </p>
+          ) : null}
+        </label>
+        <label className="block text-sm font-semibold">
+          Area
+          <select
+            value={region}
+            onChange={(event) => updateParam('region', event.target.value)}
+            className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2 font-normal"
+          >
+            <option value="">All areas</option>
+            {areaOptions(
+              exercises.status === 'ready' ? (exercises.data.meta?.regions ?? []) : [],
+              region,
+            ).map((value) => (
+              <option key={value} value={value}>
+                {labelRegion(value)}
+              </option>
+            ))}
           </select>
         </label>
         <label className="block text-sm font-semibold">
@@ -224,7 +280,7 @@ export function ExercisesPage() {
         </label>
         <button
           type="submit"
-          className="self-end rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white"
+          className="self-end rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
         >
           Search
         </button>

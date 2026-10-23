@@ -87,7 +87,7 @@ export type ExerciseDetail = ExerciseSummary & {
 
 export type ListResponse<T> = {
   data: T[];
-  meta?: { total: number; limit: number; offset: number };
+  meta?: { total: number; limit: number; offset: number; regions?: string[] };
 };
 
 export type ItemResponse<T> = {

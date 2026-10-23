@@ -2,7 +2,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded-full px-3 py-1.5 text-sm font-semibold ${
-    isActive ? 'bg-ink text-paper' : 'text-ink hover:bg-white'
+    isActive ? 'bg-accent text-on-accent' : 'text-ink hover:bg-card'
   }`;
 
 export function Layout() {

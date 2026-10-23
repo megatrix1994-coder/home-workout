@@ -192,7 +192,7 @@ export function WorkoutPage() {
                   type="button"
                   disabled={pending}
                   onClick={() => void persist(true)}
-                  className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent disabled:opacity-50"
                 >
                   Start workout
                 </button>

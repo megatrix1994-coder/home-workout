@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 export function LoadingState({ label }: { label: string }) {
   return (
@@ -33,7 +33,7 @@ export function ErrorState({
       <button
         type="button"
         onClick={onRetry}
-        className="mt-5 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-paper"
+        className="mt-5 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-on-accent"
       >
         Try again
       </button>
@@ -45,13 +45,17 @@ export function PageIntro({
   eyebrow,
   title,
   children,
+  className,
+  style,
 }: {
   eyebrow: string;
   title: string;
   children?: ReactNode;
+  className?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <header className="mb-8 max-w-3xl">
+    <header className={`mb-8 max-w-3xl ${className ?? ''}`} style={style}>
       <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">{eyebrow}</p>
       <h1 className="mt-2 font-display text-5xl font-semibold leading-none">{title}</h1>
       {children ? <div className="mt-4 text-lg text-muted">{children}</div> : null}

@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomePage } from './HomePage';
@@ -109,5 +110,13 @@ describe('HomePage', () => {
       '/nutrition?intent=bulk',
     );
     expect(screen.getByRole('link', { name: 'Build a cut workout' })).toBeInTheDocument();
+  });
+
+  it('shows a pose and moves to the next one', async () => {
+    renderHome();
+
+    expect(screen.getByText('Front double biceps')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Next pose' }));
+    expect(screen.getByText('Front lat spread')).toBeInTheDocument();
   });
 });

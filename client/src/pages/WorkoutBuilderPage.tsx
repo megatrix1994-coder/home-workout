@@ -485,7 +485,7 @@ export function WorkoutBuilderPage() {
               <button
                 type="submit"
                 disabled={building || equipment.length === 0 || !muscle}
-                className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white disabled:opacity-50"
+                className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent disabled:opacity-50"
               >
                 {building ? 'Building…' : 'Build workout'}
               </button>
@@ -589,7 +589,7 @@ export function WorkoutBuilderPage() {
                   type="button"
                   onClick={() => void save()}
                   disabled={saving}
-                  className="rounded-full bg-ink px-5 py-2.5 font-semibold text-paper disabled:opacity-50"
+                  className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent disabled:opacity-50"
                 >
                   {saving ? 'Saving…' : 'Save workout'}
                 </button>

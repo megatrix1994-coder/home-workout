@@ -45,10 +45,9 @@ describe('MusclesPage', () => {
     );
 
     expect(screen.getByRole('status')).toHaveTextContent('Loading muscle groups…');
-    expect(await screen.findByRole('link', { name: /Chest/ })).toHaveAttribute(
-      'href',
-      '/exercises?muscle=chest',
-    );
+    const chest = await screen.findByRole('link', { name: /Chest/ });
+    expect(chest).toHaveAttribute('href', '/exercises?muscle=chest');
+    expect(chest.querySelector('img')).toHaveAttribute('src', '/ambience/muscles/chest.jpg');
     expect(screen.getByText('4 exercises')).toBeInTheDocument();
     expect(screen.getByText('1 exercise')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Upper body' })).toBeInTheDocument();

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { PoseSlideshow } from '../components/PoseSlideshow';
 import { PageIntro } from '../components/Status';
 import { readWorkoutLinks } from '../storage';
 import type { BodyIntent, MealSuggestionPick } from '../types';
@@ -82,6 +83,7 @@ export function HomePage() {
 
   return (
     <>
+      <PoseSlideshow />
       <PageIntro
         eyebrow="Home Workout"
         title="Train a muscle. Know the movement."
@@ -94,7 +96,7 @@ export function HomePage() {
       <div className="flex flex-wrap gap-3">
         <Link
           to="/workouts/new"
-          className="rounded-full bg-accent px-5 py-2.5 font-semibold text-white"
+          className="rounded-full bg-accent px-5 py-2.5 font-semibold text-on-accent"
         >
           Build a workout
         </Link>

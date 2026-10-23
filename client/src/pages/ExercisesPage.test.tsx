@@ -196,4 +196,89 @@ describe('ExercisesPage', () => {
       expect.anything(),
     );
   });
+
+  it('shows the chosen muscle before the muscle list arrives', async () => {
+    let releaseMuscles = () => {};
+    const musclesReady = new Promise<void>((resolve) => {
+      releaseMuscles = resolve;
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/muscles')) {
+          await musclesReady;
+          return jsonResponse({
+            data: [
+              {
+                id: 'm-1',
+                slug: 'chest',
+                name: 'Chest',
+                anatomicalRegion: 'Upper body',
+                exerciseCount: 1,
+              },
+            ],
+          });
+        }
+        return jsonResponse({
+          data: [chestPress],
+          meta: { total: 1, limit: 100, offset: 0, regions: ['mid', 'upper'] },
+        });
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/exercises?muscle=chest']}>
+        <Routes>
+          <Route path="/exercises" element={<ExercisesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText('Muscle')).toHaveValue('chest');
+    expect(screen.getByRole('option', { name: 'chest' })).toBeInTheDocument();
+
+    releaseMuscles();
+
+    expect(await screen.findByRole('option', { name: 'Chest' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'chest' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Middle chest' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Upper chest' })).toBeInTheDocument();
+  });
+
+  it('retries once when the catalogue is briefly unavailable', async () => {
+    let exerciseCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/v1/muscles')) {
+          return jsonResponse({ data: [] });
+        }
+        exerciseCalls += 1;
+        if (exerciseCalls === 1) {
+          return jsonResponse(
+            { error: { message: 'The database is unavailable. Start it, then try again.' } },
+            false,
+            503,
+          );
+        }
+        return jsonResponse({
+          data: [chestPress],
+          meta: { total: 1, limit: 100, offset: 0, regions: ['mid'] },
+        });
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/exercises']}>
+        <Routes>
+          <Route path="/exercises" element={<ExercisesPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('link', { name: /Chest press/ })).toBeInTheDocument();
+    expect(exerciseCalls).toBe(2);
+  });
 });

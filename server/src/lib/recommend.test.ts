@@ -494,6 +494,51 @@ describe('recommend', () => {
     }
   });
 
+  it('writes a chest cut on bodyweight and a chest bulk on free weights', () => {
+    const pool = exercises.map((item) => catalogueCandidate(item));
+    const regions = ['lower', 'mid', 'pecs', 'upper'];
+
+    const cut = recommend(
+      {
+        muscleSlug: 'chest',
+        muscleName: 'Chest',
+        goal: 'strength',
+        experience: 'beginner',
+        equipmentCategories: ['bodyweight'],
+      },
+      pool,
+    );
+    expect(cut.exercises.map((item) => item.exercise.region).sort()).toEqual(regions);
+    expect(cut.exercises.every((item) => item.exercise.goals.includes('strength'))).toBe(true);
+    expect(cut.exercises.every((item) => item.exercise.difficulty === 'beginner')).toBe(true);
+    expect(
+      cut.exercises.every((item) =>
+        item.exercise.equipment.every((piece) => piece.category === 'bodyweight'),
+      ),
+    ).toBe(true);
+    expect(cut.rationale).not.toContain('no exercise written');
+
+    const bulk = recommend(
+      {
+        muscleSlug: 'chest',
+        muscleName: 'Chest',
+        goal: 'hypertrophy',
+        experience: 'intermediate',
+        equipmentCategories: ['free_weight'],
+      },
+      pool,
+    );
+    expect(bulk.exercises.map((item) => item.exercise.region).sort()).toEqual(regions);
+    expect(bulk.exercises.every((item) => item.exercise.goals.includes('hypertrophy'))).toBe(true);
+    expect(bulk.exercises.every((item) => item.exercise.difficulty === 'intermediate')).toBe(true);
+    expect(
+      bulk.exercises.every((item) =>
+        item.exercise.equipment.every((piece) => piece.category === 'free_weight'),
+      ),
+    ).toBe(true);
+    expect(bulk.rationale).not.toContain('no exercise written');
+  });
+
   it('keeps the exercise that matches the experience and the goal', () => {
     const result = recommend(
       { ...chest, goal: 'strength', experience: 'intermediate' },

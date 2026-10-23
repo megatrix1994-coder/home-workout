@@ -5,11 +5,13 @@ const {
   findManyMuscles,
   findManyExercises,
   countExercises,
+  groupExercises,
   findFirstExercise,
 } = vi.hoisted(() => ({
   findManyMuscles: vi.fn(),
   findManyExercises: vi.fn(),
   countExercises: vi.fn(),
+  groupExercises: vi.fn(),
   findFirstExercise: vi.fn(),
 }));
 
@@ -19,6 +21,7 @@ vi.mock('./db', () => ({
     exercise: {
       findMany: findManyExercises,
       count: countExercises,
+      groupBy: groupExercises,
       findFirst: findFirstExercise,
     },
   },
@@ -95,6 +98,7 @@ describe('catalogue API', () => {
   it('filters exercises and returns equipment plus target muscles', async () => {
     findManyExercises.mockResolvedValue([chestPress]);
     countExercises.mockResolvedValue(1);
+    groupExercises.mockResolvedValue([{ region: 'mid' }]);
 
     const response = await request(app).get(
       '/api/v1/exercises?search=press&muscle=chest&equipmentCategory=machine',
@@ -115,6 +119,15 @@ describe('catalogue API', () => {
           category: 'machine',
         },
       ],
+    });
+    expect(response.body.meta.regions).toEqual(['mid']);
+    expect(groupExercises).toHaveBeenCalledWith({
+      by: ['region'],
+      where: {
+        name: { contains: 'press', mode: 'insensitive' },
+        muscles: { some: { muscle: { slug: 'chest' } } },
+        equipment: { some: { equipment: { category: 'machine' } } },
+      },
     });
     expect(response.body.data[0].instructions).toBeUndefined();
     expect(response.body.data[0].animations).toBeUndefined();

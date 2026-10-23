@@ -24,6 +24,14 @@ export const exerciseListQuerySchema = z.object({
   ),
   difficulty: z.preprocess(blankToUndefined, z.enum(difficulties).optional()),
   goal: z.preprocess(blankToUndefined, z.enum(trainingGoals).optional()),
+  region: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Invalid region.')
+      .optional(),
+  ),
   limit: z.preprocess(
     (value) => (value === undefined || value === '' ? 100 : value),
     z.coerce.number().int().min(1).max(100),
@@ -57,6 +65,10 @@ export function buildExerciseWhere(query: ExerciseListQuery): Prisma.ExerciseWhe
 
   if (query.goal) {
     where.goals = { has: query.goal };
+  }
+
+  if (query.region) {
+    where.region = query.region;
   }
 
   return where;
