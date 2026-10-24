@@ -8,7 +8,7 @@ export type TestUser = {
   email: string;
   name: string;
   role: 'admin' | 'member';
-  status?: 'active' | 'removed';
+  status?: 'active' | 'pending' | 'removed';
 };
 
 export const testMember: TestUser = {

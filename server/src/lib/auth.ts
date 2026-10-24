@@ -88,25 +88,31 @@ export function readCookie(req: Request, name: string) {
   return undefined;
 }
 
-function secureCookies() {
-  return process.env.NODE_ENV === 'production' && process.env.COOKIE_SECURE !== 'false';
+export function secureCookies(req: Pick<Request, 'secure'>) {
+  if (process.env.COOKIE_SECURE === 'true') {
+    return true;
+  }
+  if (process.env.COOKIE_SECURE === 'false') {
+    return false;
+  }
+  return req.secure;
 }
 
-export function setSessionCookie(res: Response, token: string, expiresAt: Date) {
+export function setSessionCookie(req: Request, res: Response, token: string, expiresAt: Date) {
   res.cookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: secureCookies(),
+    secure: secureCookies(req),
     path: '/',
     expires: expiresAt,
   });
 }
 
-export function clearSessionCookie(res: Response) {
+export function clearSessionCookie(req: Request, res: Response) {
   res.clearCookie(SESSION_COOKIE, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: secureCookies(),
+    secure: secureCookies(req),
     path: '/',
   });
 }

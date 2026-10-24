@@ -11,7 +11,7 @@ test('an admin invites a member, keeps data private, and removes access', async 
   await page.goto('/admin');
   await expect(page.getByRole('heading', { name: 'Manage access' })).toBeVisible();
   await page.getByLabel('Email (optional)').fill(email);
-  await page.getByRole('button', { name: 'Create invite link' }).click();
+  await page.getByRole('button', { name: 'Create invite' }).click();
   const link = await page.getByLabel('Link').inputValue();
   expect(link).toMatch(/\/invite\/[\w-]{40,}$/);
 

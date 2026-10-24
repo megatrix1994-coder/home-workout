@@ -246,8 +246,10 @@ export type AuthUser = {
   role: UserRole;
 };
 
+export type UserStatus = 'active' | 'pending' | 'removed';
+
 export type AdminUser = AuthUser & {
-  status: 'active' | 'removed';
+  status: UserStatus;
   createdAt: string;
   removedAt: string | null;
   workoutCount: number;
@@ -266,6 +268,7 @@ export type PendingInvite = {
 export type CreatedLink = {
   id: string;
   url: string;
+  mobileUrl?: string | null;
   expiresAt: string;
   email?: string | null;
   role?: UserRole;

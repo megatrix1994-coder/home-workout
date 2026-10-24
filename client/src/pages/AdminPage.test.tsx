@@ -23,8 +23,9 @@ function adminUser(overrides: Record<string, unknown>) {
   };
 }
 
-function setup() {
+function setup(invite: { mobileUrl?: string | null } = {}) {
   let memberStatus = 'active';
+  let requestStatus = 'pending';
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
@@ -41,19 +42,30 @@ function setup() {
             status: memberStatus,
             workoutCount: 2,
           }),
+          adminUser({
+            id: 'u-request',
+            email: 'friend@example.com',
+            name: 'Friend',
+            role: 'member',
+            status: requestStatus,
+            workoutCount: 0,
+          }),
         ],
       });
     }
     if (url.startsWith('/api/v1/admin/invites?')) return jsonResponse({ data: [] });
     if (url === '/api/v1/admin/invites' && method === 'POST') {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { email?: string; role?: string };
       return jsonResponse(
         {
           data: {
             id: 'inv-1',
-            email: null,
-            role: 'member',
+            email: body.email ?? null,
+            role: body.role ?? 'member',
             expiresAt: '2026-10-30T00:00:00.000Z',
             url: 'http://localhost:5173/invite/secret-token',
+            mobileUrl:
+              invite.mobileUrl === undefined ? null : invite.mobileUrl,
           },
         },
         201,
@@ -61,6 +73,10 @@ function setup() {
     }
     if (url === '/api/v1/admin/users/u-member/remove' && method === 'POST') {
       memberStatus = 'removed';
+      return jsonResponse({ data: {} });
+    }
+    if (url === '/api/v1/admin/users/u-request/approve' && method === 'POST') {
+      requestStatus = 'active';
       return jsonResponse({ data: {} });
     }
     return jsonResponse({}, 404);
@@ -80,18 +96,68 @@ describe('AdminPage', () => {
   it('creates an invite link and shows it once with share options', async () => {
     const fetchMock = setup();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Create invite link' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Create invite' }));
 
     expect(await screen.findByLabelText('Link')).toHaveValue(
       'http://localhost:5173/invite/secret-token',
     );
+    expect(screen.queryByRole('link', { name: 'Send email' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Share on WhatsApp' })).toHaveAttribute(
       'href',
       expect.stringContaining(encodeURIComponent('http://localhost:5173/invite/secret-token')),
     );
+    expect(screen.getByText('A phone link is unavailable on this computer.')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Send mobile link' })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/admin/invites',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ role: 'member' }) }),
+    );
+  });
+
+  it('offers Gmail and mail-app links when the invite is locked to an email', async () => {
+    setup();
+    await userEvent.type(await screen.findByLabelText('Email (optional)'), 'friend@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Create invite' }));
+    const send = await screen.findByRole('link', { name: 'Send email' });
+    expect(send).toHaveAttribute('href', expect.stringContaining('mail.google.com'));
+    expect(send).toHaveAttribute('href', expect.stringContaining('friend%40example.com'));
+    expect(screen.getByRole('link', { name: 'Open mail app' })).toHaveAttribute(
+      'href',
+      expect.stringContaining('mailto:friend@example.com'),
+    );
+  });
+
+  it('offers a phone Wi-Fi link when the server returns a mobile URL', async () => {
+    const phone = 'http://192.168.1.70:8080/invite/secret-token';
+    setup({ mobileUrl: phone });
+    await userEvent.type(await screen.findByLabelText('Email (optional)'), 'friend@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Create invite' }));
+
+    expect(await screen.findByLabelText('Phone link')).toHaveValue(phone);
+    expect(screen.getByRole('link', { name: 'Send mobile link' })).toHaveAttribute(
+      'href',
+      expect.stringContaining(encodeURIComponent(phone)),
+    );
+    expect(screen.getByRole('link', { name: 'Open mail app with mobile link' })).toHaveAttribute(
+      'href',
+      expect.stringContaining(encodeURIComponent(phone)),
+    );
+    expect(screen.getByRole('link', { name: 'Share mobile link on WhatsApp' })).toHaveAttribute(
+      'href',
+      expect.stringContaining(encodeURIComponent(phone)),
+    );
+    expect(screen.getByRole('button', { name: 'Copy mobile link' })).toBeInTheDocument();
+    expect(screen.queryByText('A phone link is unavailable on this computer.')).not.toBeInTheDocument();
+  });
+
+  it('approves an access request from the admin page', async () => {
+    const fetchMock = setup();
+    const request = (await screen.findByText(/friend@example.com/)).closest('li')!;
+    expect(within(request).getByText(/requested/i)).toBeInTheDocument();
+    await userEvent.click(within(request).getByRole('button', { name: 'Approve' }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/admin/users/u-request/approve',
+      expect.objectContaining({ method: 'POST' }),
     );
   });
 

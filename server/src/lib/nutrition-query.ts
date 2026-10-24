@@ -37,7 +37,7 @@ export const nutritionQuerySchema = z.object({
   timing: z.preprocess(blankToUndefined, z.enum(mealTimings).optional()),
   region: z.preprocess(blankToUndefined, z.enum(foodRegions).optional()),
   diet: z.preprocess(blankToUndefined, z.enum(dietPatterns).optional()),
-  exclude: z.preprocess(trimList, z.array(z.enum(allergens)).default([])),
+  exclude: z.preprocess(trimList, z.array(z.enum(allergens)).max(allergens.length).default([])),
   budget: z.preprocess(blankToUndefined, z.enum(budgetBands).optional()),
   maxPrepMinutes: z.preprocess(
     optionalNumber,

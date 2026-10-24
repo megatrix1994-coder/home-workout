@@ -16,6 +16,7 @@ export function MusclesPage() {
         fallbackTo="/"
         links={[
           { to: '/exercises', label: 'All exercises' },
+          { to: '/stretches', label: 'Post-workout stretches' },
           { to: '/workouts/new', label: 'Build a workout' },
         ]}
       />

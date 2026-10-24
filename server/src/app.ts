@@ -11,6 +11,7 @@ import { exercisesRouter } from './routes/exercises.js';
 import { musclesRouter } from './routes/muscles.js';
 import { nutritionRouter } from './routes/nutrition.js';
 import { workoutsRouter } from './routes/workouts.js';
+import { cooldownsRouter } from './routes/cooldowns.js';
 
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
@@ -62,13 +63,14 @@ export function createApp(options: { clientDir?: string } = {}) {
   app.use(securityHeaders);
   app.use(cors({ origin: origins, credentials: true }));
   app.use('/api', sameOriginWrites(origins));
-  app.use(express.json({ limit: '100kb' }));
+  app.use(express.json({ limit: '100kb', inflate: false }));
   app.get('/api/health', health);
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/admin', requireUser, requireAdmin, adminRouter);
   app.use('/api/v1/muscles', requireUser, musclesRouter);
   app.use('/api/v1/exercises', requireUser, exercisesRouter);
   app.use('/api/v1/workouts', requireUser, workoutsRouter);
+  app.use('/api/v1/cooldowns', requireUser, cooldownsRouter);
   app.use('/api/v1/nutrition', requireUser, nutritionRouter);
   app.use('/api', (_req, res) => {
     res.status(404).json({

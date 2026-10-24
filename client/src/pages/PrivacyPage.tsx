@@ -6,16 +6,17 @@ export function PrivacyPage() {
     <article className="max-w-2xl space-y-6 leading-7">
       <PageIntro eyebrow="Legal" title="Privacy notice">
         <p>
-          Home Workout is invite-only. This notice describes what the app stores, why, and how to
-          ask for a copy or deletion. It is written for a small Kenyan service under the Data
-          Protection Act, 2019.
+          Home Workout is limited to people the admin approves, either after they create an account
+          or from an invite. This notice describes what the app stores, why, and how to ask for a
+          copy or deletion. It is written for a small Kenyan service under the Data Protection Act,
+          2019.
         </p>
       </PageIntro>
       <section>
         <h2 className="font-display text-2xl font-semibold">Who is responsible</h2>
         <p className="mt-2">
-          The admin who invited you is the data controller. Contact them through the channel they
-          used to send your invite.
+          The admin who approved or invited you is the data controller. Contact them through the
+          channel they used, or through the app if you already have access.
         </p>
       </section>
       <section>

@@ -57,6 +57,7 @@ describe('auth guards', () => {
     renderApp('/history');
 
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Create an account' })).toHaveAttribute('href', '/register');
     await userEvent.type(screen.getByLabelText('Email'), 'amina@example.com');
     await userEvent.type(screen.getByLabelText('Password'), 'long-password-1');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));

@@ -6,7 +6,7 @@ vi.mock('./db', async () => ({
 }));
 
 import { createApp } from './app.js';
-import { clearAttempts, hashPassword, verifyPassword } from './lib/auth.js';
+import { clearAttempts, hashPassword, secureCookies, verifyPassword } from './lib/auth.js';
 import { fakeDb, resetFakeDb, tables } from './test/fake-auth-db.js';
 
 const app = createApp();
@@ -40,6 +40,24 @@ function tokenFrom(url: string) {
 beforeEach(() => {
   resetFakeDb();
   clearAttempts();
+});
+
+describe('session cookies', () => {
+  it('marks the cookie Secure only on HTTPS unless COOKIE_SECURE is set', () => {
+    const previous = process.env.COOKIE_SECURE;
+    delete process.env.COOKIE_SECURE;
+    expect(secureCookies({ secure: false })).toBe(false);
+    expect(secureCookies({ secure: true })).toBe(true);
+    process.env.COOKIE_SECURE = 'true';
+    expect(secureCookies({ secure: false })).toBe(true);
+    process.env.COOKIE_SECURE = 'false';
+    expect(secureCookies({ secure: true })).toBe(false);
+    if (previous === undefined) {
+      delete process.env.COOKIE_SECURE;
+    } else {
+      process.env.COOKIE_SECURE = previous;
+    }
+  });
 });
 
 describe('password hashing', () => {
@@ -133,6 +151,56 @@ describe('sign-in', () => {
   });
 });
 
+describe('self-registration', () => {
+  it('creates a pending account that can sign in only after the admin approves', async () => {
+    await addUser('admin@example.com', 'admin');
+    const admin = await signIn('admin@example.com');
+
+    const created = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: ' Friend@Example.com ', name: 'Friend', password: PASSWORD });
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({
+      email: 'friend@example.com',
+      name: 'Friend',
+      status: 'pending',
+    });
+    expect(created.headers['set-cookie']).toBeUndefined();
+
+    const waiting = await client()
+      .post('/api/v1/auth/login')
+      .send({ email: 'friend@example.com', password: PASSWORD });
+    expect(waiting.status).toBe(403);
+    expect(waiting.body.error.code).toBe('ACCESS_PENDING');
+
+    const again = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'friend@example.com', name: 'Friend', password: PASSWORD });
+    expect(again.status).toBe(409);
+    expect(again.body.error.code).toBe('REQUEST_PENDING');
+
+    const pending = tables.users.find((user) => user.email === 'friend@example.com')!;
+    expect((await admin.post(`/api/v1/admin/users/${pending.id}/approve`)).status).toBe(200);
+    await signIn('friend@example.com');
+  });
+
+  it('lets the admin decline a request so the email can be used again', async () => {
+    await addUser('admin@example.com', 'admin');
+    const admin = await signIn('admin@example.com');
+    await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'friend@example.com', name: 'Friend', password: PASSWORD });
+    const pending = tables.users.find((user) => user.email === 'friend@example.com')!;
+    expect((await admin.post(`/api/v1/admin/users/${pending.id}/decline`)).status).toBe(204);
+    expect(tables.users.some((user) => user.email === 'friend@example.com')).toBe(false);
+
+    const retry = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'friend@example.com', name: 'Friend', password: PASSWORD });
+    expect(retry.status).toBe(201);
+  });
+});
+
 describe('invites', () => {
   it('creates an account once from an invite link and signs the person in', async () => {
     await addUser('admin@example.com', 'admin');
@@ -142,6 +210,13 @@ describe('invites', () => {
     expect(invite.status).toBe(201);
     expect(invite.body.data.url).toMatch(/^http:\/\/localhost:5173\/invite\/[\w-]{40,}$/);
     const token = tokenFrom(invite.body.data.url);
+    const mobileUrl = invite.body.data.mobileUrl as string | null;
+    if (mobileUrl) {
+      expect(mobileUrl).toMatch(/^http:\/\/\d+\.\d+\.\d+\.\d+:5173\/invite\/[\w-]{40,}$/);
+      expect(tokenFrom(mobileUrl)).toBe(token);
+    } else {
+      expect(mobileUrl).toBeNull();
+    }
     expect(tables.tokens[0]!.tokenHash).not.toBe(token);
 
     const check = await client().get(`/api/v1/auth/tokens/${token}`);

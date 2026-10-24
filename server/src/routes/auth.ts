@@ -30,12 +30,12 @@ const passwordSchema = z
 const tokenSchema = z.string().trim().min(20).max(200);
 
 const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(200) });
-const acceptInviteSchema = z.object({
-  token: tokenSchema,
+const registerSchema = z.object({
   email: emailSchema,
   name: z.string().trim().min(1, 'Enter your name.').max(80),
   password: passwordSchema,
 });
+const acceptInviteSchema = registerSchema.extend({ token: tokenSchema });
 const resetSchema = z.object({ token: tokenSchema, password: passwordSchema });
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(200),
@@ -44,13 +44,13 @@ const changePasswordSchema = z.object({
 
 const INVALID_LINK = 'This link is no longer valid. Ask the admin for a new one.';
 
-async function startSession(res: Response, userId: string) {
+async function startSession(req: Request, res: Response, userId: string) {
   const token = newToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   await prisma.session.create({
     data: { tokenHash: hashToken(token), userId, expiresAt },
   });
-  setSessionCookie(res, token, expiresAt);
+  setSessionCookie(req, res, token, expiresAt);
 }
 
 async function findUsableToken(token: string) {
@@ -96,11 +96,54 @@ authRouter.post(
     if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       throw new HttpError(401, 'INVALID_LOGIN', 'Email or password is incorrect.');
     }
+    if (user.status === 'pending') {
+      throw new HttpError(
+        403,
+        'ACCESS_PENDING',
+        'The admin has not approved your access yet.',
+      );
+    }
     if (user.status !== 'active') {
       throw new HttpError(403, 'ACCESS_REMOVED', 'This account no longer has access.');
     }
-    await startSession(res, user.id);
+    await startSession(req, res, user.id);
     res.json({ data: publicUser(user) });
+  }),
+);
+
+authRouter.post(
+  '/register',
+  asyncHandler(async (req, res) => {
+    const body = registerSchema.parse(req.body);
+    const email = normalizeEmail(body.email);
+    limitAttempts(attemptKey(req, 'register', email));
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing?.status === 'pending') {
+      throw new HttpError(
+        409,
+        'REQUEST_PENDING',
+        'This email is already waiting for the admin to approve it. Sign in after they approve you.',
+      );
+    }
+    if (existing) {
+      throw new HttpError(
+        409,
+        'EMAIL_TAKEN',
+        'An account with this email already exists. Sign in instead.',
+      );
+    }
+    const created = await prisma.user.create({
+      data: {
+        email,
+        name: body.name,
+        passwordHash: await hashPassword(body.password),
+        role: 'member',
+        status: 'pending',
+      },
+    });
+    res.status(201).json({
+      data: { email: created.email, name: created.name, status: created.status },
+    });
   }),
 );
 
@@ -111,7 +154,7 @@ authRouter.post(
     if (token) {
       await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
     }
-    clearSessionCookie(res);
+    clearSessionCookie(req, res);
     res.status(204).end();
   }),
 );
@@ -171,7 +214,7 @@ authRouter.post(
       await tx.accessToken.update({ where: { id: invite.id }, data: { userId: created.id } });
       return created;
     });
-    await startSession(res, user.id);
+    await startSession(req, res, user.id);
     res.status(201).json({ data: publicUser(user) });
   }),
 );
@@ -192,7 +235,7 @@ authRouter.post(
       await tx.user.update({ where: { id: userId }, data: { passwordHash } });
       await tx.session.deleteMany({ where: { userId } });
     });
-    await startSession(res, userId);
+    await startSession(req, res, userId);
     res.json({ data: publicUser(reset.user) });
   }),
 );

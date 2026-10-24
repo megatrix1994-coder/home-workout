@@ -264,6 +264,18 @@ describe('security and production serving', () => {
     expect(response.headers['x-powered-by']).toBeUndefined();
   });
 
+  it('lists a post-workout stretch pair for every muscle', async () => {
+    const response = await api.get('/api/v1/cooldowns');
+    expect(response.status).toBe(200);
+    expect(response.body.data.length).toBeGreaterThanOrEqual(11);
+    for (const muscle of response.body.data) {
+      expect(muscle.stretches).toHaveLength(2);
+      expect(muscle.stretches.map((stretch: { ease: string }) => stretch.ease)).toEqual(
+        expect.arrayContaining(['gentle', 'easier']),
+      );
+    }
+  });
+
   it('reports health without a session and is never cached', async () => {
     const response = await request(createApp()).get('/api/health');
     expect(response.status).toBe(200);

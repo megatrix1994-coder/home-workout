@@ -23,6 +23,7 @@ const repsSchema = z
 const equipmentListSchema = z
   .array(z.enum(equipmentCategories))
   .min(1)
+  .max(3)
   .transform((categories) => canonicalEquipment(categories))
   .refine(
     (categories) => categories.length > 0,

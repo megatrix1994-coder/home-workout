@@ -20,7 +20,7 @@ export const requireUser = asyncHandler(async (req, res, next) => {
     if (session) {
       await prisma.session.deleteMany({ where: { id: session.id } });
     }
-    clearSessionCookie(res);
+    clearSessionCookie(req, res);
     throw new HttpError(401, 'UNAUTHENTICATED', 'Sign in to continue.');
   }
   if (now.getTime() - session.lastSeenAt.getTime() > LAST_SEEN_INTERVAL_MS) {

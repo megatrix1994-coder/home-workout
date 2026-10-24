@@ -10,6 +10,7 @@ import {
   RESET_HOURS,
 } from '../lib/auth.js';
 import { HttpError } from '../lib/http.js';
+import { accessUrls } from '../lib/public-origin.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 
 const roleSchema = z.enum(['admin', 'member']);
@@ -28,11 +29,6 @@ const deleteUserSchema = z.object({ confirmEmail: z.string().trim().min(1) });
 
 function routeId(value: string | string[] | undefined) {
   return (Array.isArray(value) ? value[0] : value) ?? '';
-}
-
-function publicOrigin(req: Request) {
-  const configured = process.env.PUBLIC_URL?.replace(/\/+$/, '');
-  return configured || req.get('origin') || `${req.protocol}://${req.get('host')}`;
 }
 
 async function findTarget(req: Request) {
@@ -138,7 +134,7 @@ adminRouter.post(
         email: invite.email,
         role: invite.role,
         expiresAt: invite.expiresAt.toISOString(),
-        url: `${publicOrigin(req)}/invite/${token}`,
+        ...accessUrls(req, `/invite/${token}`),
       },
     });
   }),
@@ -204,11 +200,43 @@ adminRouter.post(
   '/users/:id/restore',
   asyncHandler(async (req, res) => {
     const { target } = await findTarget(req);
+    if (target.status !== 'removed') {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'Only a removed account can be restored.');
+    }
     await prisma.user.update({
       where: { id: target.id },
       data: { status: 'active', removedAt: null },
     });
     res.json({ data: await loadUser(target.id) });
+  }),
+);
+
+adminRouter.post(
+  '/users/:id/approve',
+  asyncHandler(async (req, res) => {
+    const { actor, target } = await findTarget(req);
+    assertNotSelf(actor.id, target.id);
+    if (target.status !== 'pending') {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'This person is not waiting for approval.');
+    }
+    await prisma.user.update({
+      where: { id: target.id },
+      data: { status: 'active', removedAt: null },
+    });
+    res.json({ data: await loadUser(target.id) });
+  }),
+);
+
+adminRouter.post(
+  '/users/:id/decline',
+  asyncHandler(async (req, res) => {
+    const { actor, target } = await findTarget(req);
+    assertNotSelf(actor.id, target.id);
+    if (target.status !== 'pending') {
+      throw new HttpError(400, 'VALIDATION_ERROR', 'This person is not waiting for approval.');
+    }
+    await prisma.user.delete({ where: { id: target.id } });
+    res.status(204).end();
   }),
 );
 
@@ -238,7 +266,7 @@ adminRouter.post(
       data: {
         id: reset.id,
         expiresAt: reset.expiresAt.toISOString(),
-        url: `${publicOrigin(req)}/reset/${token}`,
+        ...accessUrls(req, `/reset/${token}`),
       },
     });
   }),

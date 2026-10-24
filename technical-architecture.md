@@ -48,16 +48,17 @@ The API entry point is `server/src/index.ts`. It loads environment variables and
 
 3. Client
 
-Routes, all inside the shared layout in `client/src/components/Layout.tsx`. `/login`, `/privacy`, `/invite/:token`, and `/reset/:token` are open. Every other route sits behind `RequireUser` in `client/src/auth.tsx`, and `/admin` also sits behind `RequireAdmin`.
+Routes, all inside the shared layout in `client/src/components/Layout.tsx`. `/login`, `/register`, `/privacy`, `/invite/:token`, and `/reset/:token` are open. Every other route sits behind `RequireUser` in `client/src/auth.tsx`, and `/admin` also sits behind `RequireAdmin`.
 
 | Path | Screen |
 | --- | --- |
 | `/login` | Sign in. Returns to the `next` path afterwards. Only same-site paths are followed. |
+| `/register` | Create an account and wait for admin approval. Works on a phone or a laptop. |
 | `/privacy` | Privacy notice: what is stored, where, and how to ask for a copy or deletion. |
 | `/invite/:token` | Create an account from an invite link. |
 | `/reset/:token` | Choose a new password from a reset link. |
 | `/account` | Change password and sign out. |
-| `/admin` | Invite people, revoke invites, remove or restore access, reset passwords, change roles, and delete accounts. |
+| `/admin` | Approve or decline access requests, invite people, revoke invites, remove or restore access, reset passwords, change roles, and delete accounts. |
 | `/history` | The signed-in user's 50 newest workouts with progress. |
 | `/` | Home. Start a workout, reopen the newest draft, continue the newest started session, or open muscles, exercises, and meals. |
 | `/workouts/new` | Workout builder. Muscle, goal, experience, equipment, and session length. |
@@ -73,16 +74,16 @@ Routes, all inside the shared layout in `client/src/components/Layout.tsx`. `/lo
 
 Accounts and access
 
-- Access is invite only. There is no public sign-up.
+- Access is by admin approval. A person can create an account (`pending`) on a phone or a laptop and sign in after the admin approves them. The admin can still send an invite. There is no open sign-up that skips approval.
 - Passwords are hashed with `scrypt` from `node:crypto`, using a 16-byte salt per user, and compared with `timingSafeEqual`. The minimum length is 10 characters.
-- A session is a random 32-byte token in the `hw_session` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` in production unless `COOKIE_SECURE=false`. The database stores only the SHA-256 hash of the token. Sessions last 30 days.
-- `requireUser` loads the session and its user on every request and refuses a user whose status is `removed`. Removing a user also deletes their sessions, so access ends on their next request.
+- A session is a random 32-byte token in the `hw_session` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` only when the request is HTTPS (`req.secure`) unless `COOKIE_SECURE=true` or `false` overrides that. The database stores only the SHA-256 hash of the token. Sessions last 30 days.
+- `requireUser` loads the session and its user on every request and refuses a user whose status is not `active`. Removing a user also deletes their sessions, so access ends on their next request.
 - Invite and reset links carry a random token. Only its hash is stored. An invite lasts 7 days, can be locked to one email, and works once. A reset link lasts 24 hours, works once, and deletes the user's other sessions.
 - A state-changing request is accepted only when its `Origin` is the server's own origin or is in `CORS_ORIGIN`, or when it has no `Origin` and `Sec-Fetch-Site` is `same-origin`. Anything else gets `403`, so scripts calling the API must send an `Origin` header. A request body must be JSON.
-- Login, invite acceptance, password reset, and password change are limited to 10 attempts per 15 minutes per IP and key, in memory. Running more than one server process needs a shared store.
+- Login, registration, invite acceptance, password reset, and password change are limited to 10 attempts per 15 minutes per IP and key, in memory. Running more than one server process needs a shared store.
 - Admins cannot remove, demote, or delete themselves, and the last active admin cannot be removed or demoted.
-- `TRUST_PROXY` sets Express `trust proxy` for a host that terminates HTTPS. `PUBLIC_URL` sets the address used in invite and reset links.
-- Every response sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and a Content-Security-Policy that allows the app origin plus Google Fonts. `Strict-Transport-Security` is sent only when the request is HTTPS (`req.secure`, which needs `TRUST_PROXY` behind a TLS terminator). JSON bodies are capped at 100 KB.
+- `TRUST_PROXY` sets Express `trust proxy` for a host that terminates HTTPS. `PUBLIC_URL` sets the address used in invite and reset links. Create invite and reset also return `mobileUrl` on a private IPv4 of this computer when one exists, so the admin can send a phone Wi‑Fi link.
+- Every response sets `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, and a Content-Security-Policy that allows the app origin plus Google Fonts. `Strict-Transport-Security` is sent only when the request is HTTPS (`req.secure`, which needs `TRUST_PROXY` behind a TLS terminator). JSON bodies are capped at 100 KB. Compressed request bodies are rejected (`inflate: false`). `body-parser` is pinned to 1.20.9. Zod stays on 3.x because 4 is a breaking change; list schemas carry a `.max()`, so an oversized collection is rejected before it is walked.
 - `GET /api/health` is public. It runs `SELECT 1` through Prisma, is never cached, and returns `{ status: 'ok' }` or `503` `{ status: 'unavailable' }`.
 - `SIGTERM` and `SIGINT` close the HTTP server, disconnect Prisma, and exit. A second signal is ignored. The process force-exits after 10 seconds if drain stalls.
 - Hosted deploy is described in `render.yaml` and `DEPLOY.md`. GitHub Actions workflow `uptime.yml` pings `/api/health` when repository variable `PUBLIC_URL` is set.
@@ -93,7 +94,8 @@ All routes are mounted under `/api/v1` in `server/src/app.ts`. Successful bodies
 
 Auth
 
-- `POST /api/v1/auth/login` takes `email` and `password`. A wrong email or password returns `401` `INVALID_LOGIN` with one message for both. A removed user gets `403` `ACCESS_REMOVED`.
+- `POST /api/v1/auth/login` takes `email` and `password`. A wrong email or password returns `401` `INVALID_LOGIN` with one message for both. A pending user gets `403` `ACCESS_PENDING`. A removed user gets `403` `ACCESS_REMOVED`.
+- `POST /api/v1/auth/register` takes `email`, `name`, and `password`, creates a `pending` member, and does not sign them in.
 - `POST /api/v1/auth/logout` deletes the session and clears the cookie.
 - `GET /api/v1/auth/me` returns `id`, `email`, `name`, and `role`.
 - `GET /api/v1/auth/tokens/:token` checks an invite or reset link and returns its `kind`, any locked `email`, and `expiresAt`. A used, revoked, or expired link returns `404`.
@@ -105,7 +107,7 @@ Admin (admin role only, otherwise `403`)
 
 - `GET /api/v1/admin/users` lists people with role, status, workout count, and last seen.
 - `POST /api/v1/admin/invites` takes an optional `email` and a `role`, and returns the link once. `GET /api/v1/admin/invites` lists pending invites. `DELETE /api/v1/admin/invites/:id` revokes one.
-- `POST /api/v1/admin/users/:id/remove` and `/restore` change access. Workouts are kept.
+- `POST /api/v1/admin/users/:id/remove` and `/restore` change access. Workouts are kept. `POST /api/v1/admin/users/:id/approve` activates a pending request. `POST /api/v1/admin/users/:id/decline` deletes that pending account.
 - `POST /api/v1/admin/users/:id/reset-link` returns a reset link once.
 - `PATCH /api/v1/admin/users/:id` takes `role`.
 - `DELETE /api/v1/admin/users/:id` takes `confirmEmail` and deletes the user and their workouts.
@@ -255,10 +257,12 @@ Server tests use Vitest and Supertest against `createApp()`. They cover the cata
 
 Client tests use Vitest, jsdom, and Testing Library. They cover the sign-in guards, invite acceptance, the admin page, the home page, muscle and exercise browsing, exercise detail, the builder, the workout page, history, the nutrition page, the demonstration player, and the guided session.
 
-End-to-end tests in `e2e/` use Playwright on a desktop and a phone viewport. `e2e/global-setup.ts` signs in the admin from `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD`. The suites cover the full journey from builder to history, the failed-video fallback, axe scans of the main screens, keyboard reach, and the admin flow: invite, accept, privacy between accounts, removal, and deletion.
+End-to-end tests in `e2e/` use Playwright on a desktop and a phone viewport. `e2e/global-setup.ts` signs in the admin from `E2E_ADMIN_EMAIL` and `E2E_ADMIN_PASSWORD`. The suites cover the full journey from builder to history, the failed-video fallback, axe scans of the main screens, keyboard reach, and the admin flow: register and approve, invite, accept, privacy between accounts, removal, and deletion.
 
 14. Boundaries of this build
 
-This build is a multi-user application with invite-only accounts, per-user workouts and history, and an admin who controls access. It ships as one container image plus PostgreSQL.
+This build is a multi-user application with admin-approved accounts, per-user workouts and history, and an admin who controls access. It ships as one container image plus PostgreSQL.
+
+History, progress, the production image, and the Playwright journey are in this build. A qualified person still needs to fill the sheets in `content-review/` (exercise instructions and chest/glute area copy, cooldown safety text, and the nutrition guidance sentence). That review has not happened.
 
 The product areas left for later are email delivery of invite and reset links, a data export and self-service account deletion, an admin audit log, a hosted deployment pipeline with HTTPS and backups, AI coaching, pose estimation, wearables, social features, subscriptions, and clinical nutrition or rehabilitation plans. `ExerciseStretch` is reserved in the schema for a future direct exercise-to-stretch link. Animation formats other than video are reserved in the enum. The player publishes video assets.

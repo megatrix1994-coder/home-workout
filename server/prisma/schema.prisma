@@ -183,6 +183,7 @@ enum UserRole {
 
 enum UserStatus {
   active
+  pending
   removed
 }
 

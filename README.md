@@ -29,12 +29,13 @@ After changing the schema, run `npm run db:migrate` and `npm run db:seed` before
 
 ## Accounts and access
 
-Access is by invite only. There is no public sign-up.
+People can create an account on a phone or a laptop and sign in after the admin approves them. The admin can still send an invite if they prefer.
 
 1. Create the first admin with `npm run admin:create`. It asks for an email, a name, and a password of at least 10 characters. It can also read `ADMIN_EMAIL`, `ADMIN_NAME`, and `ADMIN_PASSWORD` from the environment. Running it again for the same email resets that password and makes the account an active admin.
 2. It also assigns every workout that has no owner, such as those saved before accounts existed, to that admin. Add `-- --keep-unowned` to skip that step.
-3. Sign in and open **Admin**. Create an invite link, optionally locked to one email, and send it to the person yourself, for example with the WhatsApp button. A link works once and lasts 7 days.
-4. From the same page you can revoke an unused invite, remove a person's access (they are signed out at once and their workouts are kept), restore access, create a password reset link (24 hours, once), change a role, or delete an account and its workouts after typing the email to confirm.
+3. On **Sign in**, choose **Create an account**. After they submit, they wait. The admin opens **Admin** and Approves or Declines the request. Approving lets them sign in with the same password on a phone or a laptop. No invite email is required.
+4. The admin can still create an invite link, optionally locked to one email, and send it with Email or WhatsApp. Use **Send mobile link** when they will open it on a phone on this Wi‑Fi. A link works once and lasts 7 days.
+5. From the same page you can revoke an unused invite, remove a person's access (they are signed out at once and their workouts are kept), restore access, create a password reset link (24 hours, once), change a role, or delete an account and its workouts after typing the email to confirm.
 
 An admin cannot remove, demote, or delete their own account, and the last active admin cannot be removed. There is no email delivery, so a forgotten password needs a reset link from the admin.
 
@@ -69,7 +70,7 @@ set E2E_ADMIN_PASSWORD=a-long-test-password
 npm run test:e2e
 ```
 
-`--keep-unowned` stops the test admin from claiming workouts saved before accounts existed. `E2E_BASE_URL` points the tests at another address. The suites run on a desktop and a phone viewport and cover the full workout journey, media fallbacks, axe accessibility scans, keyboard reach, and the invite, privacy, removal, and deletion flow.
+`--keep-unowned` stops the test admin from claiming workouts saved before accounts existed. `E2E_BASE_URL` points the tests at another address. The suites run on a desktop and a phone viewport and cover the full workout journey, media fallbacks, axe accessibility scans, keyboard reach, and the register, approve, invite, privacy, removal, and deletion flow.
 
 ## API
 
@@ -77,7 +78,7 @@ Successful bodies use `{ data }`. Failures use `{ error: { code, message } }`. E
 
 Auth
 
-- `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`
+- `POST /api/v1/auth/login`, `POST /api/v1/auth/register`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`
 - `GET /api/v1/auth/tokens/:token` checks an invite or reset link
 - `POST /api/v1/auth/accept-invite`, `POST /api/v1/auth/reset-password`, `POST /api/v1/auth/change-password`
 
@@ -85,7 +86,7 @@ Admin (admins only)
 
 - `GET /api/v1/admin/users`
 - `GET /api/v1/admin/invites`, `POST /api/v1/admin/invites`, `DELETE /api/v1/admin/invites/:id`
-- `POST /api/v1/admin/users/:id/remove`, `POST /api/v1/admin/users/:id/restore`, `POST /api/v1/admin/users/:id/reset-link`
+- `POST /api/v1/admin/users/:id/remove`, `POST /api/v1/admin/users/:id/restore`, `POST /api/v1/admin/users/:id/approve`, `POST /api/v1/admin/users/:id/decline`, `POST /api/v1/admin/users/:id/reset-link`
 - `PATCH /api/v1/admin/users/:id` with `role`, `DELETE /api/v1/admin/users/:id` with `confirmEmail`
 
 Catalogue, workouts, and nutrition
@@ -143,7 +144,7 @@ Production settings:
 - `CORS_ORIGIN` is the address people open, comma-separated for several.
 - `PUBLIC_URL` is the address used in invite and reset links. Without it, links use the address the admin is on.
 - `TRUST_PROXY=1` is needed when a host or proxy terminates HTTPS in front of the app, so the app sees the real client address and protocol.
-- Session cookies are `Secure` in production, so browsers send them only over HTTPS or to `localhost`. `COOKIE_SECURE=false` turns that off for a plain-HTTP test on another machine. Do not use it for real users.
+- Session cookies are `Secure` only on HTTPS, so a phone on this Wi‑Fi can sign in over plain HTTP. `COOKIE_SECURE=true` forces Secure even on HTTP. `COOKIE_SECURE=false` turns Secure off.
 
 Serve real users over HTTPS. Back up the PostgreSQL volume, because it holds every account and workout.
 

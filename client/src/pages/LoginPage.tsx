@@ -38,7 +38,10 @@ export function LoginPage() {
   return (
     <>
       <PageIntro eyebrow="Home Workout" title="Sign in">
-        <p>Your workouts and history are saved to your account. Access is by invite from the admin.</p>
+        <p>
+          Your workouts and history are saved to your account. Create an account on this phone or
+          laptop, then wait for the admin to approve you.
+        </p>
       </PageIntro>
       <form onSubmit={submit} className="max-w-md space-y-4" noValidate>
         <TextField
@@ -62,7 +65,11 @@ export function LoginPage() {
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="text-sm text-muted">
-          Forgot your password? Ask the admin for a reset link.{' '}
+          No account yet?{' '}
+          <Link to="/register" className="underline">
+            Create an account
+          </Link>
+          . Forgot your password? Ask the admin for a reset link.{' '}
           <Link to="/privacy" className="underline">
             Privacy notice
           </Link>

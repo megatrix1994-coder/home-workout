@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { apiRequest, useApi } from '../api';
 import { useAuth } from '../auth-context';
+import { inviteGmailHref, inviteMailtoHref } from '../invite-mail';
 import { FormError, TextField } from '../components/Form';
 import {
   dangerButtonClass,
@@ -37,14 +38,15 @@ function LinkPanel({
   message: string;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'mobile' | null>(null);
+  const phoneUrl = link.mobileUrl && link.mobileUrl !== link.url ? link.mobileUrl : null;
 
-  async function copy() {
+  async function copy(value: string, kind: 'link' | 'mobile') {
     try {
-      await navigator.clipboard.writeText(link.url);
-      setCopied(true);
+      await navigator.clipboard.writeText(value);
+      setCopied(kind);
     } catch {
-      setCopied(false);
+      setCopied(null);
     }
   }
 
@@ -52,7 +54,8 @@ function LinkPanel({
     <div role="status" className="mt-4 rounded-2xl border border-accent bg-card p-5">
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-1 text-sm text-muted">
-        This link is shown once and works until {formatDate(link.expiresAt)}. Send it privately.
+        The app does not send mail by itself. This link is shown once and works until{' '}
+        {formatDate(link.expiresAt)}. Send it now with Email or WhatsApp.
       </p>
       <input
         readOnly
@@ -62,8 +65,23 @@ function LinkPanel({
         className={`${inputClass} font-mono text-sm`}
       />
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" className={secondaryButtonClass} onClick={() => void copy()}>
-          {copied ? 'Copied' : 'Copy link'}
+        {link.email ? (
+          <>
+            <a
+              className={primaryButtonClass}
+              href={inviteGmailHref(link.email, link.url)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Send email
+            </a>
+            <a className={secondaryButtonClass} href={inviteMailtoHref(link.email, link.url)}>
+              Open mail app
+            </a>
+          </>
+        ) : null}
+        <button type="button" className={secondaryButtonClass} onClick={() => void copy(link.url, 'link')}>
+          {copied === 'link' ? 'Copied' : 'Copy link'}
         </button>
         <a
           className={secondaryButtonClass}
@@ -77,16 +95,76 @@ function LinkPanel({
           Done
         </button>
       </div>
+      {phoneUrl ? (
+        <div className="mt-5 border-t border-line pt-4">
+          <p className="text-sm text-muted">
+            Phone on this Wi‑Fi: keep the app running on this computer. Allow inbound TCP on this
+            port if the page does not load. The link works once and lasts 7 days.
+          </p>
+          <input
+            readOnly
+            aria-label="Phone link"
+            value={phoneUrl}
+            onFocus={(event) => event.target.select()}
+            className={`${inputClass} font-mono text-sm`}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            {link.email ? (
+              <>
+                <a
+                  className={primaryButtonClass}
+                  href={inviteGmailHref(link.email, phoneUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Send mobile link
+                </a>
+                <a
+                  className={secondaryButtonClass}
+                  href={inviteMailtoHref(link.email, phoneUrl)}
+                  aria-label="Open mail app with mobile link"
+                >
+                  Open mail app
+                </a>
+              </>
+            ) : null}
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              onClick={() => void copy(phoneUrl, 'mobile')}
+            >
+              {copied === 'mobile' ? 'Copied mobile link' : 'Copy mobile link'}
+            </button>
+            <a
+              className={secondaryButtonClass}
+              href={`https://wa.me/?text=${encodeURIComponent(`${message} ${phoneUrl}`)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Share mobile link on WhatsApp
+            </a>
+          </div>
+        </div>
+      ) : link.mobileUrl ? null : (
+        <p className="mt-4 text-sm text-muted">A phone link is unavailable on this computer.</p>
+      )}
     </div>
   );
 }
 
-function InviteSection({ onCreated }: { onCreated: () => void }) {
+function InviteSection({
+  created,
+  onCreated,
+  onClose,
+}: {
+  created: CreatedLink | null;
+  onCreated: (link: CreatedLink) => void;
+  onClose: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<UserRole>('member');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<CreatedLink | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -97,10 +175,9 @@ function InviteSection({ onCreated }: { onCreated: () => void }) {
         method: 'POST',
         body: JSON.stringify({ email: email.trim() || undefined, role }),
       });
-      setCreated(response.data);
+      onCreated(response.data);
       setEmail('');
       setRole('member');
-      onCreated();
     } catch (caught) {
       setError(errorMessage(caught, 'Could not create the invite.'));
     } finally {
@@ -119,7 +196,7 @@ function InviteSection({ onCreated }: { onCreated: () => void }) {
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          hint="With an email, only that address can use the link."
+          hint="Required to send the invite. Only that address can use the link. The app does not email them until you click Send email."
         />
         <label className="block self-start text-sm font-semibold">
           Role
@@ -133,7 +210,7 @@ function InviteSection({ onCreated }: { onCreated: () => void }) {
           </select>
         </label>
         <button type="submit" className={`${primaryButtonClass} self-start sm:mt-6`} disabled={pending}>
-          {pending ? 'Creating…' : 'Create invite link'}
+          {pending ? 'Creating…' : 'Create invite'}
         </button>
       </form>
       <FormError message={error} />
@@ -142,16 +219,23 @@ function InviteSection({ onCreated }: { onCreated: () => void }) {
           title={created.email ? `Invite for ${created.email}` : 'Invite link'}
           link={created}
           message="You're invited to Home Workout. Create your account here:"
-          onClose={() => setCreated(null)}
+          onClose={onClose}
         />
       ) : null}
     </section>
   );
 }
 
-function PendingInvites({ refreshKey }: { refreshKey: number }) {
+function PendingInvites({
+  refreshKey,
+  onResent,
+}: {
+  refreshKey: number;
+  onResent: (link: CreatedLink) => void;
+}) {
   const invites = useApi<ItemResponse<PendingInvite[]>>(`/api/v1/admin/invites?r=${refreshKey}`);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   async function revoke(id: string) {
     setError(null);
@@ -160,6 +244,23 @@ function PendingInvites({ refreshKey }: { refreshKey: number }) {
       invites.retry();
     } catch (caught) {
       setError(errorMessage(caught, 'Could not revoke the invite.'));
+    }
+  }
+
+  async function sendAgain(invite: PendingInvite) {
+    setError(null);
+    setBusyId(invite.id);
+    try {
+      await apiRequest(`/api/v1/admin/invites/${invite.id}`, { method: 'DELETE' });
+      const response = await apiRequest<ItemResponse<CreatedLink>>('/api/v1/admin/invites', {
+        method: 'POST',
+        body: JSON.stringify({ email: invite.email ?? undefined, role: invite.role }),
+      });
+      onResent(response.data);
+    } catch (caught) {
+      setError(errorMessage(caught, 'Could not create a new invite to send.'));
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -190,14 +291,24 @@ function PendingInvites({ refreshKey }: { refreshKey: number }) {
                   · {invite.role === 'admin' ? 'Admin' : 'Member'} · expires {formatDate(invite.expiresAt)}
                 </span>
               </span>
-              <button
-                type="button"
-                className={dangerButtonClass}
-                onClick={() => void revoke(invite.id)}
-                aria-label={`Revoke invite for ${invite.email ?? 'anyone with the link'}`}
-              >
-                Revoke
-              </button>
+              <span className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={secondaryButtonClass}
+                  onClick={() => void sendAgain(invite)}
+                  disabled={busyId === invite.id}
+                >
+                  {busyId === invite.id ? 'Creating…' : 'New link to send'}
+                </button>
+                <button
+                  type="button"
+                  className={dangerButtonClass}
+                  onClick={() => void revoke(invite.id)}
+                  aria-label={`Revoke invite for ${invite.email ?? 'anyone with the link'}`}
+                >
+                  Revoke
+                </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -263,7 +374,13 @@ function UserRow({
           {isSelf ? <span className="text-base text-muted"> (you)</span> : null}
         </h3>
         <span className={`text-sm font-semibold ${removed ? 'text-danger' : 'text-muted'}`}>
-          {removed ? 'Access removed' : user.role === 'admin' ? 'Admin' : 'Member'}
+          {removed
+            ? 'Access removed'
+            : user.status === 'pending'
+              ? 'Waiting for approval'
+              : user.role === 'admin'
+                ? 'Admin'
+                : 'Member'}
         </span>
       </div>
       <p className="mt-1 text-sm">{user.email}</p>
@@ -371,9 +488,89 @@ function UserRow({
   );
 }
 
+function AccessRequests({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+  const users = useApi<ItemResponse<AdminUser[]>>(`/api/v1/admin/users?r=${refreshKey}`);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const requests =
+    users.status === 'ready' ? users.data.data.filter((user) => user.status === 'pending') : [];
+
+  async function decide(id: string, action: 'approve' | 'decline') {
+    setError(null);
+    setBusyId(id);
+    try {
+      await apiRequest(`/api/v1/admin/users/${id}/${action}`, { method: 'POST' });
+      onChanged();
+    } catch (caught) {
+      setError(errorMessage(caught, action === 'approve' ? 'Could not approve.' : 'Could not decline.'));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <section aria-labelledby="requests-heading" className="mb-10">
+      <h2 id="requests-heading" className="font-display text-3xl font-semibold">
+        Access requests
+      </h2>
+      <p className="mt-2 text-sm text-muted">
+        People who created an account on a phone or laptop wait here. Approving lets them sign in
+        with the password they already chose.
+      </p>
+      <FormError message={error} />
+      {users.status === 'loading' ? <LoadingState label="Loading requests…" /> : null}
+      {users.status === 'error' ? (
+        <ErrorState title="Could not load requests" message={users.message} onRetry={users.retry} />
+      ) : null}
+      {users.status === 'ready' && requests.length === 0 ? (
+        <p className="mt-2 text-muted">No one is waiting for approval.</p>
+      ) : null}
+      {requests.length > 0 ? (
+        <ul className="mt-4 grid gap-2">
+          {requests.map((user) => (
+            <li
+              key={user.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-card px-4 py-3"
+            >
+              <span>
+                <span className="font-semibold">{user.name}</span>
+                <span className="text-sm text-muted">
+                  {' '}
+                  · {user.email} · requested {formatDate(user.createdAt)}
+                </span>
+              </span>
+              <span className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={primaryButtonClass}
+                  disabled={busyId === user.id}
+                  onClick={() => void decide(user.id, 'approve')}
+                >
+                  {busyId === user.id ? 'Saving…' : 'Approve'}
+                </button>
+                <button
+                  type="button"
+                  className={dangerButtonClass}
+                  disabled={busyId === user.id}
+                  onClick={() => void decide(user.id, 'decline')}
+                  aria-label={`Decline access for ${user.name}`}
+                >
+                  Decline
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
 function UsersSection({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const { user: me } = useAuth();
   const users = useApi<ItemResponse<AdminUser[]>>(`/api/v1/admin/users?r=${refreshKey}`);
+  const people =
+    users.status === 'ready' ? users.data.data.filter((user) => user.status !== 'pending') : [];
 
   return (
     <section aria-labelledby="users-heading">
@@ -384,12 +581,12 @@ function UsersSection({ refreshKey, onChanged }: { refreshKey: number; onChanged
       {users.status === 'error' ? (
         <ErrorState title="Could not load people" message={users.message} onRetry={users.retry} />
       ) : null}
-      {users.status === 'ready' && users.data.data.length === 0 ? (
-        <EmptyState title="No accounts yet" body="Create an invite link to add someone." />
+      {users.status === 'ready' && people.length === 0 ? (
+        <EmptyState title="No accounts yet" body="Approve a request or create an invite link to add someone." />
       ) : null}
-      {users.status === 'ready' && users.data.data.length > 0 ? (
+      {people.length > 0 ? (
         <ul className="mt-4 grid gap-3">
-          {users.data.data.map((user) => (
+          {people.map((user) => (
             <UserRow key={user.id} user={user} isSelf={user.id === me?.id} onChanged={onChanged} />
           ))}
         </ul>
@@ -400,18 +597,26 @@ function UsersSection({ refreshKey, onChanged }: { refreshKey: number; onChanged
 
 export function AdminPage() {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [created, setCreated] = useState<CreatedLink | null>(null);
   const refresh = () => setRefreshKey((value) => value + 1);
+
+  function showLink(link: CreatedLink) {
+    setCreated(link);
+    refresh();
+  }
 
   return (
     <>
       <PageIntro eyebrow="Admin" title="Manage access">
         <p>
-          Invite people with a one-time link. Removing access signs a person out at once and keeps
-          their workouts, so you can restore them later.
+          People can create an account on a phone or laptop and wait here for approval. You can
+          still send an invite with Email or WhatsApp if you prefer. Removing access signs a person
+          out at once and keeps their workouts, so you can restore them later.
         </p>
       </PageIntro>
-      <InviteSection onCreated={refresh} />
-      <PendingInvites refreshKey={refreshKey} />
+      <AccessRequests refreshKey={refreshKey} onChanged={refresh} />
+      <InviteSection created={created} onCreated={showLink} onClose={() => setCreated(null)} />
+      <PendingInvites refreshKey={refreshKey} onResent={showLink} />
       <UsersSection refreshKey={refreshKey} onChanged={refresh} />
     </>
   );

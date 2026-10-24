@@ -136,6 +136,12 @@ export function HomePage() {
           Browse muscles
         </Link>
         <Link
+          to="/stretches"
+          className="rounded-full border border-line bg-card px-5 py-2.5 font-semibold"
+        >
+          Post-workout stretches
+        </Link>
+        <Link
           to="/exercises"
           className="rounded-full border border-line bg-card px-5 py-2.5 font-semibold"
         >
