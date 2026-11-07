@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
-import { hashPassword, normalizeEmail, PASSWORD_MIN_LENGTH } from './auth.js';
+import { hashPassword, normalizeEmail, PASSWORD_MIN_LENGTH, verifyPassword } from './auth.js';
 
 const PASSWORD_STAMP = 'admin-password-stamp';
 
@@ -28,7 +28,11 @@ export async function ensureAdmin(db: PrismaClient) {
     db.user.findUnique({ where: { email: normalized } }),
     db.serverSetting.findUnique({ where: { key: PASSWORD_STAMP } }),
   ]);
-  if (existing && applied?.value === stamp) {
+  if (
+    existing &&
+    applied?.value === stamp &&
+    (await verifyPassword(password, existing.passwordHash))
+  ) {
     return;
   }
 

@@ -65,6 +65,18 @@ describe('ensureAdmin', () => {
     expect(tables.users[0]).toMatchObject({ role: 'admin', status: 'active', removedAt: null });
   });
 
+  it('replaces a stored password that does not match the saved one', async () => {
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+    process.env.ADMIN_NAME = 'Alex Admin';
+    process.env.ADMIN_PASSWORD = 'correct-horse-battery';
+    await ensureAdmin(fakeDb as never);
+    tables.users[0]!.passwordHash = 'scrypt$not-the-saved-password$not-the-saved-password';
+    await ensureAdmin(fakeDb as never);
+    expect(await verifyPassword('correct-horse-battery', String(tables.users[0]?.passwordHash))).toBe(
+      true,
+    );
+  });
+
   it('leaves other waiting accounts pending', async () => {
     process.env.ADMIN_EMAIL = 'admin@example.com';
     process.env.ADMIN_NAME = 'Alex Admin';
