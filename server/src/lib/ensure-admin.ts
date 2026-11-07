@@ -3,12 +3,40 @@ import type { PrismaClient } from '@prisma/client';
 import { hashPassword, normalizeEmail, PASSWORD_MIN_LENGTH } from './auth.js';
 
 const PASSWORD_STAMP = 'admin-password-stamp';
+const REQUESTS_APPROVED = 'existing-requests-approved';
 
 function passwordStamp(password: string) {
   return createHash('sha256').update(password).digest('hex');
 }
 
+async function approveExistingRequests(db: PrismaClient) {
+  const done = await db.serverSetting.findUnique({ where: { key: REQUESTS_APPROVED } });
+  if (done) {
+    return;
+  }
+  const approved = await db.user.updateMany({
+    where: { status: 'pending' },
+    data: { role: 'admin', status: 'active', removedAt: null },
+  });
+  await db.serverSetting.upsert({
+    where: { key: REQUESTS_APPROVED },
+    create: { key: REQUESTS_APPROVED, value: '1' },
+    update: { value: '1' },
+  });
+  if (approved.count > 0) {
+    console.log('Existing access requests are approved.');
+  }
+}
+
 export async function ensureAdmin(db: PrismaClient) {
+  try {
+    await applySavedAdmin(db);
+  } finally {
+    await approveExistingRequests(db);
+  }
+}
+
+async function applySavedAdmin(db: PrismaClient) {
   const email = process.env.ADMIN_EMAIL?.trim() ?? '';
   const name = process.env.ADMIN_NAME?.trim() ?? '';
   const password = process.env.ADMIN_PASSWORD?.trim() ?? '';
