@@ -16,7 +16,7 @@ export function RegisterPage() {
   const [confirm, setConfirm] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState<'pending' | 'active' | null>(null);
+  const [submitted, setSubmitted] = useState(false);
 
   if (state.status === 'loading') {
     return <LoadingState label="Checking your sign-in…" />;
@@ -38,11 +38,11 @@ export function RegisterPage() {
     setPending(true);
     setError(null);
     try {
-      const created = await apiRequest<{ data: { status?: string } }>('/api/v1/auth/register', {
+      await apiRequest('/api/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify({ email, name, password }),
       });
-      setSubmitted(created.data.status === 'active' ? 'active' : 'pending');
+      setSubmitted(true);
     } catch (caught) {
       setError(errorMessage(caught, 'Could not create your account.'));
       setPending(false);
@@ -52,14 +52,10 @@ export function RegisterPage() {
   if (submitted) {
     return (
       <>
-        <PageIntro
-          eyebrow="Home Workout"
-          title={submitted === 'active' ? 'Account ready' : 'Waiting for approval'}
-        >
+        <PageIntro eyebrow="Home Workout" title="Waiting for approval">
           <p>
-            {submitted === 'active'
-              ? 'You are the admin for this server. Sign in on this phone or computer with the same email and password.'
-              : 'The admin has your request. After they approve you, sign in on this phone or computer with the same email and password. No invite email is needed.'}
+            The admin has your request. After they approve you, sign in on this phone or computer
+            with the same email and password. No invite email is needed.
           </p>
         </PageIntro>
         <p>
@@ -75,8 +71,8 @@ export function RegisterPage() {
     <>
       <PageIntro eyebrow="Home Workout" title="Create an account">
         <p>
-          Use this on a phone or a laptop. You pick the password now. The first account becomes
-          the admin and can sign in at once. Later accounts wait until that admin approves them.
+          Use this on a phone or a laptop. You pick the password now. The admin still has to
+          approve you before you can use the app.
         </p>
       </PageIntro>
       <form onSubmit={submit} className="max-w-md space-y-4" noValidate>

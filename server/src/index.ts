@@ -3,7 +3,6 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { prisma } from './db.js';
-import { ensureAdmin } from './lib/ensure-admin.js';
 import { seedCatalogue } from './lib/seed-catalogue.js';
 
 const production = process.env.NODE_ENV === 'production';
@@ -37,7 +36,6 @@ async function prepareDatabase() {
   if ((await prisma.muscleGroup.count()) === 0) {
     await seedCatalogue(prisma);
   }
-  await ensureAdmin(prisma);
 }
 
 async function start() {

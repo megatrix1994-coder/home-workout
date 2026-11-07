@@ -132,19 +132,14 @@ authRouter.post(
         'An account with this email already exists. Sign in instead.',
       );
     }
-    const passwordHash = await hashPassword(body.password);
-    const created = await prisma.$transaction(async (tx) => {
-      const admins = await tx.user.count({ where: { role: 'admin', status: 'active' } });
-      const firstAdmin = admins === 0;
-      return tx.user.create({
-        data: {
-          email,
-          name: body.name,
-          passwordHash,
-          role: firstAdmin ? 'admin' : 'member',
-          status: firstAdmin ? 'active' : 'pending',
-        },
-      });
+    const created = await prisma.user.create({
+      data: {
+        email,
+        name: body.name,
+        passwordHash: await hashPassword(body.password),
+        role: 'member',
+        status: 'pending',
+      },
     });
     res.status(201).json({
       data: { email: created.email, name: created.name, status: created.status },
