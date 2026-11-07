@@ -10,8 +10,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Runtime stage: the API serves the built client. The Prisma CLI and tsx stay installed
-# so that `prisma migrate deploy` runs on start and the seed can run as a one-off command.
+# Runtime stage: the API serves the built client. The Prisma CLI stays installed
+# so the server can migrate on start, and tsx stays available for one-off commands.
 FROM node:22-bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
@@ -31,4 +31,4 @@ EXPOSE 8080
 WORKDIR /app/server
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:8080/api/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/index.js"]
+CMD ["node", "dist/index.js"]

@@ -103,13 +103,18 @@ export function createApp(options: { clientDir?: string } = {}) {
 
   const clientDir = options.clientDir;
   if (clientDir && existsSync(path.join(clientDir, 'index.html'))) {
+    const indexFile = path.join(clientDir, 'index.html');
     app.use(express.static(clientDir, { index: false, maxAge: '1h' }));
-    app.get('*', (req, res) => {
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
       if (path.extname(req.path)) {
         res.status(404).type('text/plain').send('Not found');
         return;
       }
-      res.sendFile(path.join(clientDir, 'index.html'));
+      res.sendFile(indexFile);
     });
   }
 

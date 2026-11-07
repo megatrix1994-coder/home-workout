@@ -1,8 +1,9 @@
 import 'dotenv/config';
-import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { prisma } from './db.js';
+import { migrateDeploy } from './lib/migrate.js';
 import { seedCatalogue } from './lib/seed-catalogue.js';
 
 const production = process.env.NODE_ENV === 'production';
@@ -17,35 +18,65 @@ if (production && !process.env.TRUST_PROXY) {
 }
 
 const port = Number(process.env.PORT ?? 4000);
-const clientDir = process.env.CLIENT_DIR ?? path.resolve(__dirname, '../../client/dist');
-const app = createApp(production ? { clientDir } : {});
 
-function migrateDeploy() {
-  const result = spawnSync('npx', ['prisma', 'migrate', 'deploy'], {
-    cwd: path.resolve(__dirname, '..'),
-    env: process.env,
-    stdio: 'inherit',
-  });
-  if (result.status !== 0) {
-    throw new Error('Database migration failed.');
+function resolveClientDir() {
+  if (process.env.CLIENT_DIR) {
+    return process.env.CLIENT_DIR;
   }
+  const candidates = [
+    path.resolve(__dirname, '../../client/dist'),
+    path.resolve(process.cwd(), 'client/dist'),
+    path.resolve(process.cwd(), '../client/dist'),
+  ];
+  return candidates.find((dir) => existsSync(path.join(dir, 'index.html'))) ?? candidates[0];
 }
 
+const clientDir = resolveClientDir();
+const app = createApp(production ? { clientDir } : {});
+
 async function prepareDatabase() {
-  migrateDeploy();
+  const serverDir = path.resolve(__dirname, '..');
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      await migrateDeploy(serverDir);
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+      console.error(error instanceof Error ? error.message : 'Database migration failed.');
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
   if ((await prisma.muscleGroup.count()) === 0) {
     await seedCatalogue(prisma);
   }
 }
 
 async function start() {
-  if (production && process.env.DATABASE_URL) {
-    await prepareDatabase();
+  if (production && !existsSync(path.join(clientDir, 'index.html'))) {
+    console.error('The built client was not found, so the site cannot be served.');
   }
 
-  const server = app.listen(port, '0.0.0.0', () => {
-    console.log(`API listening on port ${port}`);
+  const server = app.listen(port, '0.0.0.0');
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', () => {
+      console.log(`API listening on port ${port}`);
+      resolve();
+    });
+    server.once('error', reject);
   });
+
+  if (production && process.env.DATABASE_URL) {
+    try {
+      await prepareDatabase();
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : 'Database setup failed.');
+    }
+  }
 
   let shuttingDown = false;
 
