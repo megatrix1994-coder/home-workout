@@ -39,8 +39,9 @@ export function LoginPage() {
     <>
       <PageIntro eyebrow="Home Workout" title="Sign in">
         <p>
-          Your workouts and history are saved to your account. Create an account on this phone or
-          laptop, then wait for the admin to approve you.
+          Your workouts and history are saved to your account. The admin signs in with the email
+          and password saved for this site. The display name is not the email. A new account stays
+          pending until that admin approves it.
         </p>
       </PageIntro>
       <form onSubmit={submit} className="max-w-md space-y-4" noValidate>

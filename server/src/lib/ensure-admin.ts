@@ -4,7 +4,7 @@ import { hashPassword, normalizeEmail, PASSWORD_MIN_LENGTH } from './auth.js';
 export async function ensureAdmin(db: PrismaClient) {
   const email = process.env.ADMIN_EMAIL?.trim() ?? '';
   const name = process.env.ADMIN_NAME?.trim() ?? '';
-  const password = process.env.ADMIN_PASSWORD ?? '';
+  const password = process.env.ADMIN_PASSWORD?.trim() ?? '';
   if (!email && !name && !password) {
     return;
   }

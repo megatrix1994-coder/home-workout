@@ -52,10 +52,10 @@ async function prepareDatabase() {
   if (lastError) {
     throw lastError;
   }
+  await ensureAdmin(prisma);
   if ((await prisma.muscleGroup.count()) === 0) {
     await seedCatalogue(prisma);
   }
-  await ensureAdmin(prisma);
 }
 
 async function start() {

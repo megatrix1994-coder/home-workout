@@ -48,6 +48,12 @@ describe('ensureAdmin', () => {
       true,
     );
 
+    process.env.ADMIN_PASSWORD = 'correct-horse-battery\n';
+    await ensureAdmin(fakeDb as never);
+    expect(await verifyPassword('correct-horse-battery', String(tables.users[0]?.passwordHash))).toBe(
+      true,
+    );
+
     tables.users[0]!.role = 'member';
     tables.users[0]!.status = 'removed';
     await ensureAdmin(fakeDb as never);
