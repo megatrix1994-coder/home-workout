@@ -16,7 +16,7 @@ import { publishNutrients } from './nutrition.js';
 import { foods, meals } from '../nutrition.js';
 import { warmups } from '../warmups.js';
 
-export async function seedCatalogue(prisma: PrismaClient) {
+export async function seedMuscleGroups(prisma: PrismaClient) {
   for (const muscle of muscleGroups) {
     await prisma.muscleGroup.upsert({
       where: { slug: muscle.slug },
@@ -33,6 +33,10 @@ export async function seedCatalogue(prisma: PrismaClient) {
       },
     });
   }
+}
+
+export async function seedCatalogue(prisma: PrismaClient) {
+  await seedMuscleGroups(prisma);
 
   for (const item of equipment) {
     await prisma.equipment.upsert({

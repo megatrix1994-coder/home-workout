@@ -5,7 +5,7 @@ import { createApp } from './app.js';
 import { prisma } from './db.js';
 import { ensureAdmin } from './lib/ensure-admin.js';
 import { migrateDeploy } from './lib/migrate.js';
-import { seedCatalogue } from './lib/seed-catalogue.js';
+import { seedCatalogue, seedMuscleGroups } from './lib/seed-catalogue.js';
 
 const production = process.env.NODE_ENV === 'production';
 
@@ -52,8 +52,13 @@ async function prepareDatabase() {
   if (lastError) {
     throw lastError;
   }
-  await ensureAdmin(prisma);
-  if ((await prisma.muscleGroup.count()) === 0) {
+  try {
+    await ensureAdmin(prisma);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : 'Admin account was not ready.');
+  }
+  await seedMuscleGroups(prisma);
+  if ((await prisma.exercise.count()) === 0) {
     await seedCatalogue(prisma);
   }
 }
