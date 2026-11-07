@@ -122,18 +122,11 @@ authRouter.post(
     const email = normalizeEmail(body.email);
     limitClient(req, 'register', email);
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing?.status === 'pending') {
-      throw new HttpError(
-        409,
-        'REQUEST_PENDING',
-        'This email is already waiting for the admin to approve it. Sign in after they approve you.',
-      );
-    }
     if (existing) {
       throw new HttpError(
         409,
-        'EMAIL_TAKEN',
-        'An account with this email already exists. Sign in instead.',
+        'EMAIL_IN_USE',
+        'This email cannot be used for a new request. Sign in if you already have access.',
       );
     }
     const created = await prisma.user.create({

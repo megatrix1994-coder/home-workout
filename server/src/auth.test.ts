@@ -135,6 +135,24 @@ describe('sign-in', () => {
     expect(forged.status).toBe(401);
   });
 
+  it('allows this site only when the request host matches', async () => {
+    const otherHost = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Host', 'other.example')
+      .set('Origin', 'https://home-workout.apps.grok.bot');
+    expect(otherHost.status).toBe(403);
+    expect(otherHost.headers['access-control-allow-origin']).toBeUndefined();
+
+    const sameHost = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Host', 'home-workout.apps.grok.bot')
+      .set('Origin', 'https://home-workout.apps.grok.bot');
+    expect(sameHost.status).toBe(204);
+    expect(sameHost.headers['access-control-allow-origin']).toBe(
+      'https://home-workout.apps.grok.bot',
+    );
+  });
+
   it('accepts a sign-in the browser marks as this site', async () => {
     await addUser('amina@example.com');
     const response = await request(app)
@@ -257,7 +275,13 @@ describe('self-registration', () => {
       .post('/api/v1/auth/register')
       .send({ email: 'friend@example.com', name: 'Friend', password: PASSWORD });
     expect(again.status).toBe(409);
-    expect(again.body.error.code).toBe('REQUEST_PENDING');
+    expect(again.body.error.code).toBe('EMAIL_IN_USE');
+
+    const taken = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'admin@example.com', name: 'Admin', password: PASSWORD });
+    expect(taken.status).toBe(409);
+    expect(taken.body.error).toEqual(again.body.error);
 
     const pending = tables.users.find((user) => user.email === 'friend@example.com')!;
     expect((await admin.post(`/api/v1/admin/users/${pending.id}/approve`)).status).toBe(200);
