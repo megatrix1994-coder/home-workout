@@ -4,15 +4,15 @@ services:
     container_name: home-workout-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: homeworkout
-      POSTGRES_PASSWORD: homeworkout
-      POSTGRES_DB: homeworkout
+      POSTGRES_USER: ${POSTGRES_USER:-homeworkout}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-homeworkout}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - home_workout_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U homeworkout -d homeworkout"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10

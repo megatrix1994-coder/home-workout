@@ -14,14 +14,16 @@ export async function ensureAdmin(db: PrismaClient) {
     );
     return;
   }
-  const passwordHash = await hashPassword(password);
-  await db.user.upsert({
-    where: { email: normalizeEmail(email) },
-    update: { name, passwordHash, role: 'admin', status: 'active', removedAt: null },
-    create: {
-      email: normalizeEmail(email),
+  const normalized = normalizeEmail(email);
+  const existing = await db.user.findUnique({ where: { email: normalized } });
+  if (existing) {
+    return;
+  }
+  await db.user.create({
+    data: {
+      email: normalized,
       name,
-      passwordHash,
+      passwordHash: await hashPassword(password),
       role: 'admin',
       status: 'active',
     },
