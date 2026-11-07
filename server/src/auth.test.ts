@@ -135,6 +135,39 @@ describe('sign-in', () => {
     expect(forged.status).toBe(401);
   });
 
+  it('accepts a sign-in from this site when the proxy connection is HTTP', async () => {
+    await addUser('amina@example.com');
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .set('Host', 'home-workout.apps.grok.bot')
+      .set('Origin', 'https://home-workout.apps.grok.bot')
+      .send({ email: 'amina@example.com', password: PASSWORD });
+    expect(response.status).toBe(200);
+  });
+
+  it('accepts a sign-in forwarded from the public host', async () => {
+    await addUser('amina@example.com');
+    const previous = process.env.TRUST_PROXY;
+    process.env.TRUST_PROXY = '1';
+    const proxied = createApp();
+    try {
+      const response = await request(proxied)
+        .post('/api/v1/auth/login')
+        .set('Host', '127.0.0.1:8080')
+        .set('X-Forwarded-Host', 'home-workout.apps.grok.bot')
+        .set('X-Forwarded-Proto', 'https')
+        .set('Origin', 'https://home-workout.apps.grok.bot')
+        .send({ email: 'amina@example.com', password: PASSWORD });
+      expect(response.status).toBe(200);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.TRUST_PROXY;
+      } else {
+        process.env.TRUST_PROXY = previous;
+      }
+    }
+  });
+
   it('rejects writes sent from another site', async () => {
     await addUser('amina@example.com');
     const response = await client()

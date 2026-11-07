@@ -46,6 +46,34 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+function originHostname(origin: string) {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function requestHostnames(req: Request) {
+  const names = new Set<string>();
+  if (req.hostname) {
+    names.add(req.hostname);
+  }
+  const host = req.get('host');
+  if (host) {
+    names.add(host.replace(/:\d+$/, '').replace(/^\[|\]$/g, ''));
+  }
+  if (req.app.get('trust proxy')) {
+    for (const part of (req.get('x-forwarded-host') ?? '').split(',')) {
+      const forwarded = part.trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '');
+      if (forwarded) {
+        names.add(forwarded);
+      }
+    }
+  }
+  return names;
+}
+
 export function sameOriginWrites(allowedOrigins: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (SAFE_METHODS.has(req.method)) {
@@ -55,7 +83,9 @@ export function sameOriginWrites(allowedOrigins: string[]) {
     const origin = req.get('origin');
     const ownOrigin = `${req.protocol}://${req.get('host')}`;
     const sameSite = origin
-      ? origin === ownOrigin || allowedOrigins.includes(origin)
+      ? origin === ownOrigin ||
+        allowedOrigins.includes(origin) ||
+        requestHostnames(req).has(originHostname(origin))
       : req.get('sec-fetch-site') === 'same-origin';
     if (!sameSite) {
       next(new HttpError(403, 'FORBIDDEN', 'This request came from another site.'));
