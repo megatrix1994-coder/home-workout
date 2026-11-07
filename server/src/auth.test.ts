@@ -160,6 +160,44 @@ describe('sign-in', () => {
   });
 });
 
+describe('first admin', () => {
+  it('creates the only admin, then leaves later accounts waiting for approval', async () => {
+    const open = await client().get('/api/v1/auth/setup-admin');
+    expect(open.body.data).toEqual({ needed: true });
+
+    const created = await client().post('/api/v1/auth/setup-admin').send({
+      email: 'Admin@Example.com',
+      name: 'Alex Admin',
+      password: PASSWORD,
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({
+      email: 'admin@example.com',
+      name: 'Alex Admin',
+      role: 'admin',
+    });
+    expect(tables.users[0]).toMatchObject({ role: 'admin', status: 'active' });
+    expect(tables.sessions).toHaveLength(1);
+
+    const closed = await client().get('/api/v1/auth/setup-admin');
+    expect(closed.body.data).toEqual({ needed: false });
+    const again = await client().post('/api/v1/auth/setup-admin').send({
+      email: 'other@example.com',
+      name: 'Other',
+      password: PASSWORD,
+    });
+    expect(again.status).toBe(409);
+
+    const member = await client().post('/api/v1/auth/register').send({
+      email: 'person@example.com',
+      name: 'Person',
+      password: PASSWORD,
+    });
+    expect(member.status).toBe(201);
+    expect(member.body.data.status).toBe('pending');
+  });
+});
+
 describe('self-registration', () => {
   it('stops one address from creating an account for every email', async () => {
     for (let attempt = 0; attempt < 10; attempt += 1) {

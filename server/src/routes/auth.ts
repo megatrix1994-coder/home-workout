@@ -115,6 +115,55 @@ authRouter.post(
   }),
 );
 
+authRouter.get(
+  '/setup-admin',
+  asyncHandler(async (_req, res) => {
+    const admins = await prisma.user.count({ where: { role: 'admin', status: 'active' } });
+    res.json({ data: { needed: admins === 0 } });
+  }),
+);
+
+authRouter.post(
+  '/setup-admin',
+  asyncHandler(async (req, res) => {
+    limitClient(req, 'setup-admin');
+    const body = registerSchema.parse(req.body);
+    const email = normalizeEmail(body.email);
+    const created = await prisma.$transaction(async (tx) => {
+      const admins = await tx.user.count({ where: { role: 'admin', status: 'active' } });
+      if (admins > 0) {
+        throw new HttpError(409, 'ADMIN_EXISTS', 'An admin already exists. Sign in instead.');
+      }
+      const existing = await tx.user.findUnique({ where: { email } });
+      if (existing) {
+        throw new HttpError(
+          409,
+          'EMAIL_TAKEN',
+          'An account with this email already exists. Sign in instead.',
+        );
+      }
+      return tx.user.create({
+        data: {
+          email,
+          name: body.name,
+          passwordHash: await hashPassword(body.password),
+          role: 'admin',
+          status: 'active',
+        },
+      });
+    });
+    await startSession(req, res, created.id);
+    res.status(201).json({
+      data: publicUser({
+        id: created.id,
+        email: created.email,
+        name: created.name,
+        role: 'admin',
+      }),
+    });
+  }),
+);
+
 authRouter.post(
   '/register',
   asyncHandler(async (req, res) => {
