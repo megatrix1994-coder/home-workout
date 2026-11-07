@@ -26,6 +26,7 @@ COPY --from=build /app/server/prisma server/prisma
 COPY --from=build /app/server/src server/src
 COPY --from=build /app/server/scripts server/scripts
 COPY --from=build /app/server/tsconfig.json server/tsconfig.json
+COPY --from=build /app/cursor/identity.js /app/cursor/identity.dev.js cursor/
 USER node
 EXPOSE 8080
 WORKDIR /app/server

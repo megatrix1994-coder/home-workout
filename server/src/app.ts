@@ -2,6 +2,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { prisma } from './db.js';
+import { signInPrivateOwner } from './lib/owner-access.js';
 import { requireAdmin, requireUser, sameOriginWrites } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { adminRouter } from './routes/admin.js';
@@ -88,6 +89,17 @@ export function createApp(options: { clientDir?: string } = {}) {
     next();
   });
   app.use('/api', sameOriginWrites(origins));
+  app.use((req, res, next) => {
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api') || path.extname(req.path)) {
+      next();
+      return;
+    }
+    void signInPrivateOwner(prisma, req, res)
+      .catch((error: unknown) => {
+        console.error(error instanceof Error ? error.message : 'Owner sign-in failed.');
+      })
+      .finally(() => next());
+  });
   app.use(express.json({ limit: '100kb', inflate: false }));
   app.get('/api/health', health);
   app.use('/api/v1/auth', authRouter);
