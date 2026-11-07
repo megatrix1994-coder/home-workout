@@ -80,11 +80,6 @@ const user = {
     Object.assign(row, data, { updatedAt: new Date() });
     return row;
   },
-  updateMany: async ({ where, data }: { where: Where; data: Row }) => {
-    const rows = tables.users.filter((item) => matches(item, where));
-    for (const row of rows) Object.assign(row, data, { updatedAt: new Date() });
-    return { count: rows.length };
-  },
   upsert: async ({ where, update, create }: { where: Where; update: Row; create: Row }) => {
     const existing = tables.users.find((row) => matches(row, where));
     if (existing) {

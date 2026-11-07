@@ -65,10 +65,10 @@ describe('ensureAdmin', () => {
     expect(tables.users[0]).toMatchObject({ role: 'admin', status: 'active', removedAt: null });
   });
 
-  it('approves accounts that are already waiting, and leaves later requests waiting', async () => {
-    delete process.env.ADMIN_EMAIL;
-    delete process.env.ADMIN_NAME;
-    delete process.env.ADMIN_PASSWORD;
+  it('leaves other waiting accounts pending', async () => {
+    process.env.ADMIN_EMAIL = 'admin@example.com';
+    process.env.ADMIN_NAME = 'Alex Admin';
+    process.env.ADMIN_PASSWORD = 'correct-horse-battery';
     tables.users.push({
       id: 'user-waiting',
       email: 'owner@example.com',
@@ -76,29 +76,19 @@ describe('ensureAdmin', () => {
       passwordHash: 'kept',
       role: 'member',
       status: 'pending',
-      removedAt: new Date(),
+      removedAt: null,
       createdAt: new Date(),
     });
     await ensureAdmin(fakeDb as never);
-    expect(tables.users[0]).toMatchObject({
-      role: 'admin',
-      status: 'active',
-      removedAt: null,
-      passwordHash: 'kept',
-    });
-
-    tables.users.push({
-      id: 'user-later',
-      email: 'later@example.com',
-      name: 'Later',
-      passwordHash: 'kept',
+    expect(tables.users.find((user) => user.email === 'owner@example.com')).toMatchObject({
       role: 'member',
       status: 'pending',
-      removedAt: null,
-      createdAt: new Date(),
+      passwordHash: 'kept',
     });
-    await ensureAdmin(fakeDb as never);
-    expect(tables.users[1]).toMatchObject({ role: 'member', status: 'pending' });
+    expect(tables.users.find((user) => user.email === 'admin@example.com')).toMatchObject({
+      role: 'admin',
+      status: 'active',
+    });
   });
 
   it('leaves the database alone when the password is too short', async () => {
