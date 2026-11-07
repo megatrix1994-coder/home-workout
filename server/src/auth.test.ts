@@ -135,6 +135,29 @@ describe('sign-in', () => {
     expect(forged.status).toBe(401);
   });
 
+  it('accepts a sign-in the browser marks as this site', async () => {
+    await addUser('amina@example.com');
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .set('Host', 'internal.local:8080')
+      .set('Origin', 'https://home-workout.apps.grok.bot')
+      .set('Sec-Fetch-Site', 'same-origin')
+      .send({ email: 'amina@example.com', password: PASSWORD });
+    expect(response.status).toBe(200);
+  });
+
+  it('rejects a sign-in the browser marks as another site', async () => {
+    await addUser('amina@example.com');
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .set('Host', 'internal.local:8080')
+      .set('Origin', 'https://evil.example')
+      .set('Sec-Fetch-Site', 'cross-site')
+      .send({ email: 'amina@example.com', password: PASSWORD });
+    expect(response.status).toBe(403);
+    expect(tables.sessions).toHaveLength(0);
+  });
+
   it('accepts a sign-in from this site when the proxy connection is HTTP', async () => {
     await addUser('amina@example.com');
     const response = await request(app)

@@ -50,10 +50,13 @@ async function health(_req: Request, res: Response) {
 
 export function createApp(options: { clientDir?: string } = {}) {
   const app = express();
-  const origins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const origins = [
+    ...(process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(','),
+    process.env.PUBLIC_URL ?? '',
+    'https://home-workout.apps.grok.bot',
+  ]
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter((origin, index, all) => origin && all.indexOf(origin) === index);
 
   app.disable('x-powered-by');
   if (process.env.TRUST_PROXY) {
