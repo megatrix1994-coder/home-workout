@@ -152,6 +152,23 @@ describe('sign-in', () => {
 });
 
 describe('self-registration', () => {
+  it('makes the first account an active admin that can sign in at once', async () => {
+    const created = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'owner@example.com', name: 'Owner', password: PASSWORD });
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({
+      email: 'owner@example.com',
+      name: 'Owner',
+      status: 'active',
+    });
+    expect(tables.users.find((user) => user.email === 'owner@example.com')).toMatchObject({
+      role: 'admin',
+      status: 'active',
+    });
+    await signIn('owner@example.com');
+  });
+
   it('creates a pending account that can sign in only after the admin approves', async () => {
     await addUser('admin@example.com', 'admin');
     const admin = await signIn('admin@example.com');

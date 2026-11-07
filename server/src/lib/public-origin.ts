@@ -83,14 +83,24 @@ export function lanOrigin(
   return `http://${address}:${port}`;
 }
 
+function sharesLan(origin: string) {
+  try {
+    const hostname = new URL(origin).hostname.replace(/^\[|\]$/g, '');
+    return hostname === 'localhost' || hostname === '::1' || isPrivateIpv4(hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function accessUrls(
   req: Request,
   path: string,
   interfaces: NetworkInterfaces = networkInterfaces(),
 ) {
-  const lan = lanOrigin(req, interfaces);
+  const origin = publicOrigin(req);
+  const lan = sharesLan(origin) ? lanOrigin(req, interfaces) : null;
   return {
-    url: `${publicOrigin(req)}${path}`,
+    url: `${origin}${path}`,
     mobileUrl: lan ? `${lan}${path}` : null,
   };
 }

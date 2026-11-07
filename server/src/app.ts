@@ -1,4 +1,3 @@
-import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -61,7 +60,31 @@ export function createApp(options: { clientDir?: string } = {}) {
     app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
   }
   app.use(securityHeaders);
-  app.use(cors({ origin: origins, credentials: true }));
+  app.use((req, res, next) => {
+    const requestOrigin = req.get('origin');
+    const host = req.get('host');
+    let sameHost = false;
+    if (requestOrigin && host) {
+      try {
+        sameHost = new URL(requestOrigin).host === host;
+      } catch {
+        sameHost = false;
+      }
+    }
+    const allowed = !requestOrigin || origins.includes(requestOrigin) || sameHost;
+    if (requestOrigin && allowed) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(allowed ? 204 : 403);
+      return;
+    }
+    next();
+  });
   app.use('/api', sameOriginWrites(origins));
   app.use(express.json({ limit: '100kb', inflate: false }));
   app.get('/api/health', health);
