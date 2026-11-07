@@ -9,6 +9,7 @@ export const tables = {
   sessions: [] as Row[],
   tokens: [] as Row[],
   workouts: [] as Row[],
+  serverSettings: [] as Row[],
 };
 
 export function resetFakeDb() {
@@ -16,6 +17,7 @@ export function resetFakeDb() {
   tables.sessions.length = 0;
   tables.tokens.length = 0;
   tables.workouts.length = 0;
+  tables.serverSettings.length = 0;
 }
 
 function matches(row: Row, where: Where = {}) {
@@ -157,10 +159,26 @@ const accessToken = {
   },
 };
 
+const serverSetting = {
+  findUnique: async ({ where }: { where: Where }) =>
+    tables.serverSettings.find((row) => matches(row, where)) ?? null,
+  upsert: async ({ where, update, create }: { where: Where; update: Row; create: Row }) => {
+    const existing = tables.serverSettings.find((row) => matches(row, where));
+    if (existing) {
+      Object.assign(existing, update);
+      return existing;
+    }
+    const row: Row = { ...create, ...where, id: String(where.key) };
+    tables.serverSettings.push(row);
+    return row;
+  },
+};
+
 export const fakeDb = {
   user,
   session,
   accessToken,
+  serverSetting,
   async $transaction(input: unknown) {
     if (typeof input === 'function') {
       return (input as (tx: unknown) => Promise<unknown>)(fakeDb);

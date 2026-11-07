@@ -1,5 +1,12 @@
+import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { hashPassword, normalizeEmail, PASSWORD_MIN_LENGTH } from './auth.js';
+
+const PASSWORD_STAMP = 'admin-password-stamp';
+
+function passwordStamp(password: string) {
+  return createHash('sha256').update(password).digest('hex');
+}
 
 export async function ensureAdmin(db: PrismaClient) {
   const email = process.env.ADMIN_EMAIL?.trim() ?? '';
@@ -14,19 +21,38 @@ export async function ensureAdmin(db: PrismaClient) {
     );
     return;
   }
+
   const normalized = normalizeEmail(email);
-  const existing = await db.user.findUnique({ where: { email: normalized } });
-  if (existing) {
+  const stamp = passwordStamp(password);
+  const [existing, applied] = await Promise.all([
+    db.user.findUnique({ where: { email: normalized } }),
+    db.serverSetting.findUnique({ where: { key: PASSWORD_STAMP } }),
+  ]);
+  if (existing && applied?.value === stamp) {
     return;
   }
-  await db.user.create({
-    data: {
-      email: normalized,
-      name,
-      passwordHash: await hashPassword(password),
-      role: 'admin',
-      status: 'active',
-    },
+
+  const passwordHash = await hashPassword(password);
+  if (existing) {
+    await db.user.update({
+      where: { email: normalized },
+      data: { name, passwordHash, role: 'admin', status: 'active', removedAt: null },
+    });
+  } else {
+    await db.user.create({
+      data: {
+        email: normalized,
+        name,
+        passwordHash,
+        role: 'admin',
+        status: 'active',
+      },
+    });
+  }
+  await db.serverSetting.upsert({
+    where: { key: PASSWORD_STAMP },
+    create: { key: PASSWORD_STAMP, value: stamp },
+    update: { value: stamp },
   });
   console.log('Admin account is ready.');
 }

@@ -435,6 +435,11 @@ model Meal {
   @@index([region])
 }
 
+model ServerSetting {
+  key   String @id
+  value String
+}
+
 model MealFood {
   mealId String
   foodId String

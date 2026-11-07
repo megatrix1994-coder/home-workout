@@ -33,7 +33,7 @@ describe('ensureAdmin', () => {
     expect(tables.users).toHaveLength(0);
   });
 
-  it('creates an active admin once and does not replace that account later', async () => {
+  it('creates an active admin once and applies a new saved password', async () => {
     process.env.ADMIN_EMAIL = 'Admin@Example.com';
     process.env.ADMIN_NAME = 'Alex Admin';
     process.env.ADMIN_PASSWORD = 'correct-horse-battery\n';
@@ -49,13 +49,20 @@ describe('ensureAdmin', () => {
     );
 
     const passwordHash = tables.users[0]?.passwordHash;
-    process.env.ADMIN_PASSWORD = 'a-different-password';
     tables.users[0]!.role = 'member';
     tables.users[0]!.status = 'removed';
     await ensureAdmin(fakeDb as never);
     expect(tables.users).toHaveLength(1);
     expect(tables.users[0]?.passwordHash).toBe(passwordHash);
     expect(tables.users[0]).toMatchObject({ role: 'member', status: 'removed' });
+
+    process.env.ADMIN_PASSWORD = 'a-different-password';
+    await ensureAdmin(fakeDb as never);
+    expect(tables.users).toHaveLength(1);
+    expect(await verifyPassword('a-different-password', String(tables.users[0]?.passwordHash))).toBe(
+      true,
+    );
+    expect(tables.users[0]).toMatchObject({ role: 'admin', status: 'active', removedAt: null });
   });
 
   it('leaves the database alone when the password is too short', async () => {
