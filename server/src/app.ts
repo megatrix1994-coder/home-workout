@@ -1,8 +1,8 @@
-import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { prisma } from './db.js';
+import { signInPrivateOwner } from './lib/owner-access.js';
 import { requireAdmin, requireUser, sameOriginWrites } from './middleware/auth.js';
 import { errorHandler } from './middleware/error-handler.js';
 import { adminRouter } from './routes/admin.js';
@@ -16,8 +16,8 @@ import { cooldownsRouter } from './routes/cooldowns.js';
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  "style-src 'self'",
+  "font-src 'self'",
   "img-src 'self' data:",
   "media-src 'self'",
   "connect-src 'self'",
@@ -51,18 +51,55 @@ async function health(_req: Request, res: Response) {
 
 export function createApp(options: { clientDir?: string } = {}) {
   const app = express();
-  const origins = (process.env.CORS_ORIGIN ?? 'http://localhost:5173')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const origins = [
+    ...(process.env.CORS_ORIGIN ?? 'http://localhost:5173').split(','),
+    process.env.PUBLIC_URL ?? '',
+  ]
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter((origin, index, all) => origin && all.indexOf(origin) === index);
 
   app.disable('x-powered-by');
   if (process.env.TRUST_PROXY) {
     app.set('trust proxy', Number(process.env.TRUST_PROXY) || process.env.TRUST_PROXY);
   }
   app.use(securityHeaders);
-  app.use(cors({ origin: origins, credentials: true }));
+  app.use((req, res, next) => {
+    const requestOrigin = req.get('origin');
+    const host = req.get('host');
+    let sameHost = false;
+    if (requestOrigin && host) {
+      try {
+        sameHost = new URL(requestOrigin).host === host;
+      } catch {
+        sameHost = false;
+      }
+    }
+    const allowed = !requestOrigin || origins.includes(requestOrigin) || sameHost;
+    if (requestOrigin && allowed) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(allowed ? 204 : 403);
+      return;
+    }
+    next();
+  });
   app.use('/api', sameOriginWrites(origins));
+  app.use((req, res, next) => {
+    if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.startsWith('/api') || path.extname(req.path)) {
+      next();
+      return;
+    }
+    void signInPrivateOwner(prisma, req, res)
+      .catch((error: unknown) => {
+        console.error(error instanceof Error ? error.message : 'Owner sign-in failed.');
+      })
+      .finally(() => next());
+  });
   app.use(express.json({ limit: '100kb', inflate: false }));
   app.get('/api/health', health);
   app.use('/api/v1/auth', authRouter);
@@ -80,13 +117,18 @@ export function createApp(options: { clientDir?: string } = {}) {
 
   const clientDir = options.clientDir;
   if (clientDir && existsSync(path.join(clientDir, 'index.html'))) {
+    const indexFile = path.join(clientDir, 'index.html');
     app.use(express.static(clientDir, { index: false, maxAge: '1h' }));
-    app.get('*', (req, res) => {
+    app.use((req, res, next) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
       if (path.extname(req.path)) {
         res.status(404).type('text/plain').send('Not found');
         return;
       }
-      res.sendFile(path.join(clientDir, 'index.html'));
+      res.sendFile(indexFile);
     });
   }
 

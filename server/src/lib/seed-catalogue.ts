@@ -1,0 +1,288 @@
+import {
+  PrismaClient,
+  type Allergen,
+  type BudgetBand,
+  type DietPattern,
+  type EquipmentCategory,
+  type FoodRegion,
+  type MealEmphasis,
+  type MealTiming,
+  type MuscleRole,
+  type NutrientName,
+} from '@prisma/client';
+import { equipment, exercises, muscleGroups } from '../catalogue.js';
+import { cooldowns } from '../cooldowns.js';
+import { publishNutrients } from './nutrition.js';
+import { foods, meals } from '../nutrition.js';
+import { warmups } from '../warmups.js';
+
+export async function seedMuscleGroups(prisma: PrismaClient) {
+  for (const muscle of muscleGroups) {
+    await prisma.muscleGroup.upsert({
+      where: { slug: muscle.slug },
+      update: {
+        name: muscle.name,
+        anatomicalRegion: muscle.anatomicalRegion,
+        sortOrder: muscle.sortOrder,
+      },
+      create: {
+        slug: muscle.slug,
+        name: muscle.name,
+        anatomicalRegion: muscle.anatomicalRegion,
+        sortOrder: muscle.sortOrder,
+      },
+    });
+  }
+}
+
+export async function seedCatalogue(prisma: PrismaClient) {
+  await seedMuscleGroups(prisma);
+
+  for (const item of equipment) {
+    await prisma.equipment.upsert({
+      where: { slug: item.slug },
+      update: {
+        name: item.name,
+        category: item.category as EquipmentCategory,
+      },
+      create: {
+        slug: item.slug,
+        name: item.name,
+        category: item.category as EquipmentCategory,
+      },
+    });
+  }
+
+  await prisma.exercise.deleteMany({
+    where: { slug: { notIn: exercises.map((exercise) => exercise.slug) } },
+  });
+
+  const muscles = await prisma.muscleGroup.findMany();
+  const equipmentRows = await prisma.equipment.findMany();
+  const muscleBySlug = new Map(muscles.map((muscle) => [muscle.slug, muscle]));
+  const equipmentBySlug = new Map(
+    equipmentRows.map((item) => [item.slug, item]),
+  );
+
+  for (const exercise of exercises) {
+    const saved = await prisma.exercise.upsert({
+      where: { slug: exercise.slug },
+      update: {
+        name: exercise.name,
+        description: exercise.description,
+        instructions: exercise.instructions,
+        difficulty: exercise.difficulty,
+        movementType: exercise.movementType,
+        region: exercise.region,
+        goals: [exercise.goal],
+      },
+      create: {
+        slug: exercise.slug,
+        name: exercise.name,
+        description: exercise.description,
+        instructions: exercise.instructions,
+        difficulty: exercise.difficulty,
+        movementType: exercise.movementType,
+        region: exercise.region,
+        goals: [exercise.goal],
+      },
+    });
+
+    await prisma.exerciseMuscle.deleteMany({ where: { exerciseId: saved.id } });
+    await prisma.exerciseEquipment.deleteMany({
+      where: { exerciseId: saved.id },
+    });
+
+    await prisma.exerciseMuscle.createMany({
+      data: exercise.muscles.map((muscle) => {
+        const row = muscleBySlug.get(muscle.slug);
+        if (!row) {
+          throw new Error(`Unknown muscle slug: ${muscle.slug}`);
+        }
+        return {
+          exerciseId: saved.id,
+          muscleId: row.id,
+          role: muscle.role as MuscleRole,
+        };
+      }),
+    });
+
+    await prisma.exerciseEquipment.createMany({
+      data: exercise.equipment.map((slug) => {
+        const row = equipmentBySlug.get(slug);
+        if (!row) {
+          throw new Error(`Unknown equipment slug: ${slug}`);
+        }
+        return { exerciseId: saved.id, equipmentId: row.id };
+      }),
+    });
+
+    await prisma.animationAsset.deleteMany({ where: { exerciseId: saved.id } });
+    await prisma.animationAsset.create({
+      data: {
+        exerciseId: saved.id,
+        assetUrl: `/demonstrations/${exercise.slug}.mp4`,
+        format: 'video',
+        reviewStatus: 'approved',
+      },
+    });
+  }
+
+  const stretchSlugs = [
+    ...warmups.map((stretch) => stretch.slug),
+    ...cooldowns.map((stretch) => stretch.slug),
+  ];
+  await prisma.stretch.deleteMany({
+    where: { slug: { notIn: stretchSlugs } },
+  });
+
+  for (const stretch of warmups) {
+    const saved = await prisma.stretch.upsert({
+      where: { slug: stretch.slug },
+      update: {
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'warmup',
+      },
+      create: {
+        slug: stretch.slug,
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'warmup',
+      },
+    });
+
+    await prisma.stretchMuscle.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.stretchMuscle.createMany({
+      data: stretch.muscles.map((slug) => {
+        const row = muscleBySlug.get(slug);
+        if (!row) {
+          throw new Error(`Unknown muscle slug: ${slug}`);
+        }
+        return { stretchId: saved.id, muscleId: row.id };
+      }),
+    });
+  }
+
+  for (const stretch of cooldowns) {
+    const saved = await prisma.stretch.upsert({
+      where: { slug: stretch.slug },
+      update: {
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'cooldown',
+      },
+      create: {
+        slug: stretch.slug,
+        name: stretch.name,
+        instructions: stretch.instructions,
+        durationSeconds: stretch.durationSeconds,
+        purpose: 'cooldown',
+      },
+    });
+
+    const muscle = muscleBySlug.get(stretch.muscle);
+    if (!muscle) {
+      throw new Error(`Unknown muscle slug: ${stretch.muscle}`);
+    }
+    await prisma.stretchMuscle.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.stretchMuscle.createMany({
+      data: [{ stretchId: saved.id, muscleId: muscle.id }],
+    });
+
+    await prisma.animationAsset.deleteMany({ where: { stretchId: saved.id } });
+    await prisma.animationAsset.create({
+      data: {
+        stretchId: saved.id,
+        assetUrl: `/demonstrations/${stretch.slug}.mp4`,
+        format: 'video',
+        reviewStatus: 'approved',
+      },
+    });
+  }
+
+  const foodIds = new Map<string, string>();
+  for (const food of foods) {
+    const saved = await prisma.food.upsert({
+      where: { slug: food.slug },
+      update: {
+        name: food.name,
+        region: food.region as FoodRegion,
+        servingSize: food.servingSize,
+        preparation: food.preparation,
+        allergens: food.allergens as Allergen[],
+        diets: food.diets as DietPattern[],
+      },
+      create: {
+        slug: food.slug,
+        name: food.name,
+        region: food.region as FoodRegion,
+        servingSize: food.servingSize,
+        preparation: food.preparation,
+        allergens: food.allergens as Allergen[],
+        diets: food.diets as DietPattern[],
+      },
+    });
+    foodIds.set(food.slug, saved.id);
+
+    await prisma.foodNutrient.deleteMany({ where: { foodId: saved.id } });
+    const nutrients = publishNutrients(food.nutrients);
+    if (nutrients.length > 0) {
+      await prisma.foodNutrient.createMany({
+        data: nutrients.map((row) => ({
+          foodId: saved.id,
+          nutrient: row.nutrient as NutrientName,
+          amount: row.amount,
+          unit: row.unit,
+          sourceName: row.sourceName,
+        })),
+      });
+    }
+  }
+
+  for (const meal of meals) {
+    const saved = await prisma.meal.upsert({
+      where: { slug: meal.slug },
+      update: {
+        name: meal.name,
+        timing: meal.timing as MealTiming,
+        region: meal.region as FoodRegion,
+        rationale: meal.rationale,
+        prepMinutes: meal.prepMinutes,
+        budget: meal.budget as BudgetBand,
+        emphasis: meal.emphasis as MealEmphasis,
+      },
+      create: {
+        slug: meal.slug,
+        name: meal.name,
+        timing: meal.timing as MealTiming,
+        region: meal.region as FoodRegion,
+        rationale: meal.rationale,
+        prepMinutes: meal.prepMinutes,
+        budget: meal.budget as BudgetBand,
+        emphasis: meal.emphasis as MealEmphasis,
+      },
+    });
+
+    await prisma.mealFood.deleteMany({ where: { mealId: saved.id } });
+    await prisma.mealFood.createMany({
+      data: meal.foods.map((slug, order) => {
+        const foodId = foodIds.get(slug);
+        if (!foodId) {
+          throw new Error(`Unknown food slug: ${slug}`);
+        }
+        return { mealId: saved.id, foodId, order };
+      }),
+    });
+  }
+
+  await prisma.meal.deleteMany({
+    where: { slug: { notIn: meals.map((meal) => meal.slug) } },
+  });
+  await prisma.food.deleteMany({
+    where: { slug: { notIn: foods.map((food) => food.slug) } },
+  });
+}

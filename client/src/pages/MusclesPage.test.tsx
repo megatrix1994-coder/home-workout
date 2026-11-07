@@ -53,6 +53,37 @@ describe('MusclesPage', () => {
     expect(screen.getByRole('heading', { name: 'Upper body' })).toBeInTheDocument();
   });
 
+  it('shows a muscle group whose region is not one of the usual three', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          data: [
+            {
+              id: '3',
+              slug: 'forearms',
+              name: 'Forearms',
+              anatomicalRegion: 'Arms',
+              exerciseCount: 3,
+            },
+          ],
+        }),
+      ),
+    );
+
+    render(
+      <MemoryRouter>
+        <MusclesPage />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('heading', { name: 'Arms' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Forearms/ })).toHaveAttribute(
+      'href',
+      '/exercises?muscle=forearms',
+    );
+  });
+
   it('shows an empty state when the catalogue has no muscle groups', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ data: [] })));
     render(

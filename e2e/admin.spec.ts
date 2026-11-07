@@ -12,7 +12,7 @@ test('an admin invites a member, keeps data private, and removes access', async 
   await expect(page.getByRole('heading', { name: 'Manage access' })).toBeVisible();
   await page.getByLabel('Email (optional)').fill(email);
   await page.getByRole('button', { name: 'Create invite' }).click();
-  const link = await page.getByLabel('Link').inputValue();
+  const link = await page.getByRole('textbox', { name: 'Link', exact: true }).inputValue();
   expect(link).toMatch(/\/invite\/[\w-]{40,}$/);
 
   const memberContext = await browser.newContext({ storageState: SIGNED_OUT });

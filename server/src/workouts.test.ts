@@ -40,8 +40,8 @@ const {
 vi.mock('./db', () => ({
   prisma: {
     $transaction: transaction,
-    muscleGroup: { findUnique: findUniqueMuscle },
-    exercise: { findMany: findManyExercises },
+    muscleGroup: { findUnique: findUniqueMuscle, upsert: vi.fn().mockResolvedValue({}) },
+    exercise: { findMany: findManyExercises, count: vi.fn().mockResolvedValue(1) },
     stretch: { findMany: findManyStretches, findFirst: findFirstStretch },
     workoutCooldown: { createMany: createCooldown, update: updateCooldown },
     session: { findUnique: findUniqueSession, update: vi.fn(), deleteMany: vi.fn() },
@@ -58,6 +58,10 @@ vi.mock('./db', () => ({
     },
     workoutSetLog: { upsert: upsertSetLog },
   },
+}));
+
+vi.mock('./lib/materialize-catalogue', () => ({
+  ensureStoredExercises: vi.fn().mockResolvedValue(0),
 }));
 
 import { createApp } from './app.js';
@@ -362,6 +366,26 @@ describe('workout API', () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(findUniqueMuscle).not.toHaveBeenCalled();
+  });
+
+  it('builds from the library when that muscle has not been saved yet', async () => {
+    findUniqueMuscle.mockResolvedValue(null);
+    findManyExercises.mockResolvedValue([]);
+
+    const response = await api.get(
+      '/api/v1/workouts/recommendations?muscle=chest&goal=strength&experience=beginner&equipment=bodyweight&length=standard',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.muscle).toMatchObject({ slug: 'chest', name: 'Chest' });
+    expect(response.body.data.exercises.length).toBeGreaterThan(0);
+    expect(response.body.data.warmups.length).toBeGreaterThan(0);
+    expect(
+      response.body.data.exercises.every(
+        (slot: { exercise: { equipment: Array<{ category: string }> } }) =>
+          slot.exercise.equipment.every((item) => item.category === 'bodyweight'),
+      ),
+    ).toBe(true);
   });
 
   it('returns an empty recommendation when the muscle is unknown', async () => {

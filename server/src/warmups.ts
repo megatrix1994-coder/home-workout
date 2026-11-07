@@ -11,7 +11,7 @@ function cues(setup: string, steps: string[]): string {
     `Setup: ${setup}`,
     ...steps.map((step, index) => `${index + 1}. ${step}`),
     'Breathing: Keep the breath slow and quiet.',
-    'Move slowly and stay short of pain.',
+    'Common mistakes: Moving into pain, or holding the breath.',
   ].join('\n');
 }
 

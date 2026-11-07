@@ -126,11 +126,31 @@ export function currentUser(req: Request) {
 
 const ATTEMPT_LIMIT = 10;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const MAX_TRACKED_ATTEMPTS = 500;
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
+function pruneAttempts(now: number) {
+  if (attempts.size < MAX_TRACKED_ATTEMPTS) {
+    return;
+  }
+  for (const [key, entry] of attempts) {
+    if (entry.resetAt <= now) {
+      attempts.delete(key);
+    }
+  }
+}
+
 export function limitAttempts(key: string, now = Date.now()) {
+  pruneAttempts(now);
   const entry = attempts.get(key);
   if (!entry || entry.resetAt <= now) {
+    if (!attempts.has(key) && attempts.size >= MAX_TRACKED_ATTEMPTS) {
+      throw new HttpError(
+        429,
+        'TOO_MANY_ATTEMPTS',
+        'Too many attempts. Wait 15 minutes, then try again.',
+      );
+    }
     attempts.set(key, { count: 1, resetAt: now + ATTEMPT_WINDOW_MS });
     return;
   }

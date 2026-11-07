@@ -46,17 +46,62 @@ export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+function originHostname(origin: string) {
+  try {
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+
+function bareHostname(value: string) {
+  return value.trim().replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
+}
+
+function requestHostnames(req: Request) {
+  const names = new Set<string>();
+  if (req.hostname) {
+    names.add(req.hostname.toLowerCase());
+  }
+  const host = req.get('host');
+  if (host) {
+    names.add(bareHostname(host));
+  }
+  for (const part of (req.get('x-forwarded-host') ?? '').split(',')) {
+    const forwarded = bareHostname(part);
+    if (forwarded) {
+      names.add(forwarded);
+    }
+  }
+  const forwardedHeader = req.get('forwarded');
+  if (forwardedHeader) {
+    for (const match of forwardedHeader.matchAll(/host="?([^;"\s]+)"?/gi)) {
+      const forwarded = bareHostname(match[1] ?? '');
+      if (forwarded) {
+        names.add(forwarded);
+      }
+    }
+  }
+  return names;
+}
+
 export function sameOriginWrites(allowedOrigins: string[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (SAFE_METHODS.has(req.method)) {
       next();
       return;
     }
+    const fetchSite = req.get('sec-fetch-site');
+    const browserSaysSameSite = fetchSite === 'same-origin' || fetchSite === 'none';
     const origin = req.get('origin');
     const ownOrigin = `${req.protocol}://${req.get('host')}`;
-    const sameSite = origin
-      ? origin === ownOrigin || allowedOrigins.includes(origin)
-      : req.get('sec-fetch-site') === 'same-origin';
+    const sameSite =
+      browserSaysSameSite ||
+      (origin
+        ? origin === ownOrigin ||
+          allowedOrigins.includes(origin) ||
+          requestHostnames(req).has(originHostname(origin))
+        : false);
     if (!sameSite) {
       next(new HttpError(403, 'FORBIDDEN', 'This request came from another site.'));
       return;

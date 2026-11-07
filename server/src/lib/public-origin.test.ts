@@ -79,6 +79,11 @@ describe('LAN origin', () => {
       url: 'http://localhost:5173/reset/token',
       mobileUrl: null,
     });
+    process.env.PUBLIC_URL = 'https://workout.example';
+    expect(accessUrls(req({ origin: 'http://localhost:5173' }), '/invite/token', mixed)).toEqual({
+      url: 'https://workout.example/invite/token',
+      mobileUrl: null,
+    });
     if (previous === undefined) {
       delete process.env.PUBLIC_URL;
     } else {
