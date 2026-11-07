@@ -6,7 +6,7 @@ vi.mock('./db', async () => ({
 }));
 
 import { createApp } from './app.js';
-import { clearAttempts, hashPassword, secureCookies, verifyPassword } from './lib/auth.js';
+import { clearAttempts, hashPassword, limitAttempts, secureCookies, verifyPassword } from './lib/auth.js';
 import { fakeDb, resetFakeDb, tables } from './test/fake-auth-db.js';
 
 const app = createApp();
@@ -40,6 +40,15 @@ function tokenFrom(url: string) {
 beforeEach(() => {
   resetFakeDb();
   clearAttempts();
+});
+
+describe('attempt limits', () => {
+  it('refuses new attempt keys when the tracker is full', () => {
+    for (let index = 0; index < 500; index += 1) {
+      limitAttempts(`flood:${index}`);
+    }
+    expect(() => limitAttempts('flood:extra')).toThrow(/Too many attempts/);
+  });
 });
 
 describe('session cookies', () => {
@@ -152,6 +161,21 @@ describe('sign-in', () => {
 });
 
 describe('self-registration', () => {
+  it('stops one address from creating an account for every email', async () => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const created = await client()
+        .post('/api/v1/auth/register')
+        .send({ email: `person-${attempt}@example.com`, name: 'Person', password: PASSWORD });
+      expect(created.status).toBe(201);
+    }
+    const limited = await client()
+      .post('/api/v1/auth/register')
+      .send({ email: 'person-extra@example.com', name: 'Person', password: PASSWORD });
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe('TOO_MANY_ATTEMPTS');
+    expect(tables.users.some((user) => user.email === 'person-extra@example.com')).toBe(false);
+  });
+
   it('creates a pending account that can sign in only after the admin approves', async () => {
     await addUser('admin@example.com', 'admin');
     const admin = await signIn('admin@example.com');

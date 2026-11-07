@@ -80,8 +80,12 @@ async function claimToken(tx: Prisma.TransactionClient, id: string) {
   }
 }
 
-function attemptKey(req: Request, scope: string, value: string) {
-  return `${scope}:${req.ip}:${value}`;
+function limitClient(req: Request, scope: string, value?: string) {
+  const address = req.ip || 'unknown';
+  limitAttempts(`${scope}:${address}`);
+  if (value) {
+    limitAttempts(`${scope}:${address}:${value}`);
+  }
 }
 
 export const authRouter = Router();
@@ -91,7 +95,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = loginSchema.parse(req.body);
     const email = normalizeEmail(body.email);
-    limitAttempts(attemptKey(req, 'login', email));
+    limitClient(req, 'login', email);
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       throw new HttpError(401, 'INVALID_LOGIN', 'Email or password is incorrect.');
@@ -116,7 +120,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = registerSchema.parse(req.body);
     const email = normalizeEmail(body.email);
-    limitAttempts(attemptKey(req, 'register', email));
+    limitClient(req, 'register', email);
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing?.status === 'pending') {
       throw new HttpError(
@@ -166,6 +170,7 @@ authRouter.get('/me', requireUser, (req, res) => {
 authRouter.get(
   '/tokens/:token',
   asyncHandler(async (req, res) => {
+    limitClient(req, 'token');
     const token = tokenSchema.safeParse(req.params.token);
     const record = token.success ? await findUsableToken(token.data) : null;
     if (!record) {
@@ -186,7 +191,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = acceptInviteSchema.parse(req.body);
     const email = normalizeEmail(body.email);
-    limitAttempts(attemptKey(req, 'invite', body.token));
+    limitClient(req, 'invite', body.token);
     const invite = await findUsableToken(body.token);
     if (!invite || invite.kind !== 'invite') {
       throw new HttpError(404, 'NOT_FOUND', INVALID_LINK);
@@ -223,7 +228,7 @@ authRouter.post(
   '/reset-password',
   asyncHandler(async (req, res) => {
     const body = resetSchema.parse(req.body);
-    limitAttempts(attemptKey(req, 'reset', body.token));
+    limitClient(req, 'reset', body.token);
     const reset = await findUsableToken(body.token);
     if (!reset || reset.kind !== 'reset' || !reset.user) {
       throw new HttpError(404, 'NOT_FOUND', INVALID_LINK);
@@ -246,7 +251,7 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const body = changePasswordSchema.parse(req.body);
     const user = currentUser(req);
-    limitAttempts(attemptKey(req, 'change-password', user.id));
+    limitClient(req, 'change-password', user.id);
     const record = await prisma.user.findUnique({ where: { id: user.id } });
     if (!record || !(await verifyPassword(body.currentPassword, record.passwordHash))) {
       throw new HttpError(400, 'VALIDATION_ERROR', 'Your current password is incorrect.');
