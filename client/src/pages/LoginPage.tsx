@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { safeNext, signInRequest, useAuth } from '../auth-context';
 import { FormError, TextField } from '../components/Form';
@@ -14,22 +14,6 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [setupNeeded, setSetupNeeded] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    fetch('/api/v1/auth/setup-admin')
-      .then(async (response) => (response.ok ? response.json() : null))
-      .then((body: { data?: { needed?: boolean } } | null) => {
-        if (active && body?.data?.needed) {
-          setSetupNeeded(true);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, []);
 
   if (state.status === 'loading') {
     return <LoadingState label="Checking your sign-in…" />;
@@ -81,15 +65,6 @@ export function LoginPage() {
           {pending ? 'Signing in…' : 'Sign in'}
         </button>
         <p className="text-sm text-muted">
-          {setupNeeded ? (
-            <>
-              No admin yet?{' '}
-              <Link to="/setup" className="underline">
-                Create the admin account
-              </Link>
-              .{' '}
-            </>
-          ) : null}
           No account yet?{' '}
           <Link to="/register" className="underline">
             Create an account

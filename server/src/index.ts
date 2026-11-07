@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createApp } from './app.js';
 import { prisma } from './db.js';
+import { ensureAdmin } from './lib/ensure-admin.js';
 import { migrateDeploy } from './lib/migrate.js';
 import { seedCatalogue } from './lib/seed-catalogue.js';
 
@@ -54,6 +55,7 @@ async function prepareDatabase() {
   if ((await prisma.muscleGroup.count()) === 0) {
     await seedCatalogue(prisma);
   }
+  await ensureAdmin(prisma);
 }
 
 async function start() {

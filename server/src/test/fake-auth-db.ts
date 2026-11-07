@@ -78,6 +78,14 @@ const user = {
     Object.assign(row, data, { updatedAt: new Date() });
     return row;
   },
+  upsert: async ({ where, update, create }: { where: Where; update: Row; create: Row }) => {
+    const existing = tables.users.find((row) => matches(row, where));
+    if (existing) {
+      Object.assign(existing, update, { updatedAt: new Date() });
+      return existing;
+    }
+    return user.create({ data: { ...create, email: where.email ?? create.email } });
+  },
   delete: async ({ where }: { where: Where }) => {
     const index = tables.users.findIndex((item) => matches(item, where));
     const [row] = tables.users.splice(index, 1);
