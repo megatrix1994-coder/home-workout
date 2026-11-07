@@ -5,7 +5,7 @@ import { createApp } from './app.js';
 import { prisma } from './db.js';
 import { ensureAdmin } from './lib/ensure-admin.js';
 import { migrateDeploy } from './lib/migrate.js';
-import { seedCatalogue, seedMuscleGroups } from './lib/seed-catalogue.js';
+import { ensureCatalogue } from './lib/ensure-catalogue.js';
 
 const production = process.env.NODE_ENV === 'production';
 
@@ -50,17 +50,14 @@ async function prepareDatabase() {
     }
   }
   if (lastError) {
-    throw lastError;
+    console.error('Database migration did not finish. The catalogue will still be loaded.');
   }
   try {
     await ensureAdmin(prisma);
   } catch (error) {
     console.error(error instanceof Error ? error.message : 'Admin account was not ready.');
   }
-  await seedMuscleGroups(prisma);
-  if ((await prisma.exercise.count()) === 0) {
-    await seedCatalogue(prisma);
-  }
+  await ensureCatalogue(prisma);
 }
 
 async function start() {
@@ -77,7 +74,7 @@ async function start() {
     server.once('error', reject);
   });
 
-  if (production && process.env.DATABASE_URL) {
+  if (process.env.DATABASE_URL) {
     try {
       await prepareDatabase();
     } catch (error) {

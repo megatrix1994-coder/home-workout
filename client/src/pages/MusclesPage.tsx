@@ -39,7 +39,14 @@ export function MusclesPage() {
       ) : null}
       {state.status === 'ready' && state.data.data.length > 0 ? (
         <div className="space-y-8">
-          {regionOrder.map((region) => {
+          {[
+            ...regionOrder,
+            ...state.data.data
+              .map((muscle) => muscle.anatomicalRegion)
+              .filter((region) => !regionOrder.includes(region)),
+          ]
+            .filter((region, index, regions) => regions.indexOf(region) === index)
+            .map((region) => {
             const muscles = state.data.data.filter((muscle) => muscle.anatomicalRegion === region);
             if (muscles.length === 0) {
               return null;

@@ -9,6 +9,8 @@ import {
   pickPrerequisite,
   type PrerequisiteCandidate,
 } from '../lib/body-composition.js';
+import { catalogueExerciseDetail, catalogueExercisePage, isMissingCatalogueTable } from '../lib/catalogue-fallback.js';
+import { ensureCatalogue } from '../lib/ensure-catalogue.js';
 import { buildExerciseWhere, exerciseListQuerySchema } from '../lib/exercise-query.js';
 import { HttpError } from '../lib/http.js';
 import { progressionCycle } from '../lib/progression.js';
@@ -120,30 +122,43 @@ exercisesRouter.get(
     const query = exerciseListQuerySchema.parse(req.query);
     const where = buildExerciseWhere(query);
     const regionWhere = buildExerciseWhere({ ...query, region: undefined });
-    const [exercises, total, regionRows] = await Promise.all([
-      prisma.exercise.findMany({
-        where,
-        include: exerciseInclude,
-        orderBy: { name: 'asc' },
-        skip: query.offset,
-        take: query.limit,
-      }),
-      prisma.exercise.count({ where }),
-      prisma.exercise.groupBy({
-        by: ['region'],
-        where: regionWhere,
-      }),
-    ]);
+    try {
+      const [exercises, total, regionRows] = await Promise.all([
+        prisma.exercise.findMany({
+          where,
+          include: exerciseInclude,
+          orderBy: { name: 'asc' },
+          skip: query.offset,
+          take: query.limit,
+        }),
+        prisma.exercise.count({ where }),
+        prisma.exercise.groupBy({
+          by: ['region'],
+          where: regionWhere,
+        }),
+      ]);
+      const stored = total === 0 ? await prisma.exercise.count() : total;
+      if (stored > 0) {
+        res.json({
+          data: exercises.map((exercise) => serializeExercise(exercise, false)),
+          meta: {
+            total,
+            limit: query.limit,
+            offset: query.offset,
+            regions: regionRows.map((row) => row.region).sort(),
+          },
+        });
+        return;
+      }
+    } catch (error) {
+      if (!isMissingCatalogueTable(error)) {
+        throw error;
+      }
+      console.error(error instanceof Error ? error.message : 'Exercises could not be read.');
+    }
 
-    res.json({
-      data: exercises.map((exercise) => serializeExercise(exercise, false)),
-      meta: {
-        total,
-        limit: query.limit,
-        offset: query.offset,
-        regions: regionRows.map((row) => row.region).sort(),
-      },
-    });
+    void ensureCatalogue(prisma);
+    res.json(catalogueExercisePage(query));
   }),
 );
 
@@ -203,6 +218,12 @@ exercisesRouter.get(
     });
 
     if (!exercise) {
+      const fallback = catalogueExerciseDetail(id);
+      if (fallback) {
+        void ensureCatalogue(prisma);
+        res.json({ data: fallback });
+        return;
+      }
       throw new HttpError(404, 'NOT_FOUND', 'Exercise not found.');
     }
 

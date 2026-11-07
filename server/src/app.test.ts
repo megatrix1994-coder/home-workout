@@ -26,7 +26,7 @@ vi.mock('./db', () => ({
   prisma: {
     $queryRaw: queryRaw,
     session: { findUnique: findUniqueSession, update: vi.fn(), deleteMany: vi.fn() },
-    muscleGroup: { findMany: findManyMuscles },
+    muscleGroup: { findMany: findManyMuscles, upsert: vi.fn().mockResolvedValue({}) },
     exercise: {
       findMany: findManyExercises,
       count: countExercises,
@@ -45,6 +45,7 @@ const api = request.agent(app).set('Cookie', TEST_COOKIE).set('Sec-Fetch-Site', 
 beforeEach(() => {
   findUniqueSession.mockResolvedValue(sessionFor());
   queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+  countExercises.mockResolvedValue(1);
 });
 
 const chestPress = {
@@ -227,6 +228,30 @@ describe('catalogue API', () => {
       code: 'NOT_FOUND',
       message: 'Exercise not found.',
     });
+  });
+
+  it('shows the built-in muscle groups when none are stored yet', async () => {
+    findManyMuscles.mockResolvedValue([]);
+
+    const response = await api.get('/api/v1/muscles');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.map((muscle: { name: string }) => muscle.name)).toEqual([
+      'Chest',
+      'Back',
+      'Shoulders',
+      'Biceps',
+      'Triceps',
+      'Forearms',
+      'Quadriceps',
+      'Hamstrings',
+      'Glutes',
+      'Calves',
+      'Abdominals and obliques',
+    ]);
+    expect(response.body.data.every((muscle: { exerciseCount: number }) => muscle.exerciseCount > 0)).toBe(
+      true,
+    );
   });
 
   it('returns 500 when the catalogue query fails', async () => {
