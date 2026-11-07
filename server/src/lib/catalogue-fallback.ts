@@ -1,4 +1,6 @@
 import { equipment, exercises, muscleGroups, type CatalogueExercise } from '../catalogue.js';
+import { warmups } from '../warmups.js';
+import type { Candidate } from './recommend.js';
 import { approvedAnimations } from './animations.js';
 import { easierDifficulty, pickPrerequisite, type PrerequisiteCandidate } from './body-composition.js';
 import type { ExerciseListQuery } from './exercise-query.js';
@@ -91,6 +93,52 @@ function candidate(exercise: CatalogueExercise): PrerequisiteCandidate {
     goals: [exercise.goal],
     muscles: exercise.muscles.map((muscle) => ({ slug: muscle.slug, role: muscle.role })),
   };
+}
+
+export function catalogueCandidates(): Candidate[] {
+  return exercises.map((exercise) => ({
+    id: exercise.slug,
+    slug: exercise.slug,
+    name: exercise.name,
+    description: exercise.description,
+    instructions: exercise.instructions,
+    difficulty: exercise.difficulty,
+    movementType: exercise.movementType,
+    region: exercise.region,
+    goals: [exercise.goal],
+    muscles: exercise.muscles.map((muscle) => ({
+      slug: muscle.slug,
+      name: muscleBySlug.get(muscle.slug)?.name ?? muscle.slug,
+      role: muscle.role,
+    })),
+    equipment: exercise.equipment
+      .map((slug) => {
+        const item = equipmentBySlug.get(slug);
+        return item
+          ? { slug: item.slug, name: item.name, category: item.category }
+          : null;
+      })
+      .filter((item) => item !== null),
+    animations: [
+      {
+        id: `${exercise.slug}-demo`,
+        format: 'video' as const,
+        assetUrl: `/demonstrations/${exercise.slug}.mp4`,
+      },
+    ],
+  }));
+}
+
+export function catalogueWarmups(muscleSlug: string) {
+  return warmups
+    .filter((stretch) => stretch.muscles.includes(muscleSlug))
+    .map((stretch) => ({
+      id: stretch.slug,
+      slug: stretch.slug,
+      name: stretch.name,
+      instructions: stretch.instructions,
+      durationSeconds: stretch.durationSeconds,
+    }));
 }
 
 export function catalogueMuscles() {

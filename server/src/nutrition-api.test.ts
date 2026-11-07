@@ -101,6 +101,14 @@ describe('nutrition API', () => {
     expect(JSON.stringify(response.body)).not.toContain('999');
   });
 
+  it('uses the built-in meals when none are stored', async () => {
+    findManyMeals.mockResolvedValue([]);
+    const response = await api.get('/api/v1/nutrition/recommendations?intent=cut');
+    expect(response.status).toBe(200);
+    expect(response.body.data.suggestions.length).toBeGreaterThan(0);
+    expect(response.body.data.guidance).toBe(MEAL_GUIDANCE);
+  });
+
   it('accepts a cut intent', async () => {
     const response = await api.get('/api/v1/nutrition/recommendations?intent=cut');
 

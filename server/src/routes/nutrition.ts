@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db.js';
+import { foods, meals } from '../nutrition.js';
+import { isMissingCatalogueTable } from '../lib/catalogue-fallback.js';
 import { nutritionQuerySchema } from '../lib/nutrition-query.js';
 import {
   recommendMeals,
@@ -55,16 +57,46 @@ function toMeals(rows: StoredMeal[]): MealInput[] {
   }));
 }
 
+function builtinMeals(): StoredMeal[] {
+  const foodBySlug = new Map(foods.map((food) => [food.slug, food]));
+  return meals.map((meal) => ({
+    slug: meal.slug,
+    name: meal.name,
+    timing: meal.timing,
+    region: meal.region,
+    rationale: meal.rationale,
+    prepMinutes: meal.prepMinutes,
+    budget: meal.budget,
+    emphasis: meal.emphasis,
+    foods: meal.foods.map((slug, order) => {
+      const food = foodBySlug.get(slug);
+      if (!food) {
+        throw new Error(`Unknown food slug: ${slug}`);
+      }
+      return { order, food };
+    }),
+  }));
+}
+
 export const nutritionRouter = Router();
 
 nutritionRouter.get(
   '/recommendations',
   asyncHandler(async (req, res) => {
     const query = nutritionQuerySchema.parse(req.query);
-    const rows = await prisma.meal.findMany({
-      include: mealInclude,
-      orderBy: { name: 'asc' },
+    let rows: StoredMeal[] = [];
+    try {
+      rows = (await prisma.meal.findMany({
+        include: mealInclude,
+        orderBy: { name: 'asc' },
+      })) as StoredMeal[];
+    } catch (error) {
+      if (!isMissingCatalogueTable(error)) {
+        throw error;
+      }
+    }
+    res.json({
+      data: recommendMeals(toMeals(rows.length > 0 ? rows : builtinMeals()), query),
     });
-    res.json({ data: recommendMeals(toMeals(rows as StoredMeal[]), query) });
   }),
 );

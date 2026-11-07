@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { catalogueExerciseDetail, catalogueExercisePage, catalogueMuscles } from './catalogue-fallback.js';
+import {
+  catalogueCandidates,
+  catalogueExerciseDetail,
+  catalogueExercisePage,
+  catalogueMuscles,
+  catalogueWarmups,
+} from './catalogue-fallback.js';
 
 describe('catalogue fallback', () => {
   it('lists every muscle group with at least one exercise', () => {
@@ -31,6 +37,20 @@ describe('catalogue fallback', () => {
     expect(page.data.every((exercise) => exercise.muscles.some((muscle) => muscle.slug === 'chest'))).toBe(
       true,
     );
+  });
+
+  it('can build a chest session from the library', () => {
+    expect(catalogueWarmups('chest').map((stretch) => stretch.name)).toEqual([
+      'Doorway chest opener',
+      'Wall slide',
+    ]);
+    expect(
+      catalogueCandidates().some(
+        (exercise) =>
+          exercise.slug === 'push-up' &&
+          exercise.muscles.some((muscle) => muscle.slug === 'chest' && muscle.role === 'primary'),
+      ),
+    ).toBe(true);
   });
 
   it('returns a built-in exercise by slug', () => {

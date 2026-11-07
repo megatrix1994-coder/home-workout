@@ -24,7 +24,11 @@ import {
   type TrainingGoal,
 } from '../lib/recommend.js';
 import { exerciseProgression, type LoggedSet } from '../lib/progression.js';
+import { muscleGroups } from '../catalogue.js';
 import { gentleSlug } from '../cooldowns.js';
+import { catalogueCandidates, catalogueWarmups, isMissingCatalogueTable } from '../lib/catalogue-fallback.js';
+import { ensureCatalogue } from '../lib/ensure-catalogue.js';
+import { ensureStoredExercises } from '../lib/materialize-catalogue.js';
 import { trainedMuscleSlugs } from '../lib/cooldown.js';
 import { buildProgress, summarizeExercise, type HistoryWorkout } from '../lib/history.js';
 import {
@@ -245,20 +249,33 @@ async function loadPrimaryCandidates(muscleId: string) {
   return exercises.map((exercise) => toCandidate(exercise));
 }
 
-async function loadRequestedExercises(ids: string[]) {
-  const records = await prisma.exercise.findMany({
-    where: { id: { in: ids } },
+async function readRequestedExercises(ids: string[]) {
+  return prisma.exercise.findMany({
+    where: { OR: [{ id: { in: ids } }, { slug: { in: ids } }] },
     include: exerciseInclude,
   });
-  const byId = new Map(records.map((exercise) => [exercise.id, exercise]));
-  if (ids.some((id) => !byId.has(id))) {
+}
+
+async function loadRequestedExercises(ids: string[]) {
+  let records = await readRequestedExercises(ids);
+  const found = new Set(records.flatMap((exercise) => [exercise.id, exercise.slug]));
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length > 0 && (await ensureStoredExercises(prisma, missing)) > 0) {
+    records = await readRequestedExercises(ids);
+  }
+  const byKey = new Map<string, ExerciseRecord>();
+  for (const exercise of records) {
+    byKey.set(exercise.id, exercise);
+    byKey.set(exercise.slug, exercise);
+  }
+  if (ids.some((id) => !byKey.has(id))) {
     throw new HttpError(
       400,
       'VALIDATION_ERROR',
       'One or more exercises were not found.',
     );
   }
-  return ids.map((id) => byId.get(id)!);
+  return ids.map((id) => byKey.get(id)!);
 }
 
 function assertEligible(
@@ -441,9 +458,38 @@ workoutsRouter.get(
   '/recommendations',
   asyncHandler(async (req, res) => {
     const query = recommendationQuerySchema.parse(req.query);
-    const muscle = await prisma.muscleGroup.findUnique({
-      where: { slug: query.muscle },
-    });
+    const builtIn = muscleGroups.find((item) => item.slug === query.muscle);
+    let muscle: { id: string; slug: string; name: string } | null = null;
+    let warmups: Array<{
+      id: string;
+      slug: string;
+      name: string;
+      instructions: string;
+      durationSeconds: number;
+    }> = [];
+    let candidates: Candidate[] = [];
+    try {
+      const stored = await prisma.muscleGroup.findUnique({
+        where: { slug: query.muscle },
+      });
+      if (stored) {
+        muscle = stored;
+        warmups = await loadWarmups(stored.id);
+        candidates = await loadPrimaryCandidates(stored.id);
+      }
+    } catch (error) {
+      if (!isMissingCatalogueTable(error)) {
+        throw error;
+      }
+    }
+    if (candidates.length === 0 && builtIn) {
+      muscle = muscle ?? { id: builtIn.slug, slug: builtIn.slug, name: builtIn.name };
+      if (warmups.length === 0) {
+        warmups = catalogueWarmups(builtIn.slug);
+      }
+      candidates = catalogueCandidates();
+      void ensureCatalogue(prisma);
+    }
     if (!muscle) {
       res.json({
         data: {
@@ -461,7 +507,6 @@ workoutsRouter.get(
       return;
     }
 
-    const warmups = await loadWarmups(muscle.id);
     const recommendation = recommend(
       recommendationInput(
         muscle,
@@ -469,16 +514,19 @@ workoutsRouter.get(
         query.experience,
         query.equipment,
       ),
-      await loadPrimaryCandidates(muscle.id),
+      candidates,
       warmups.reduce((sum, stretch) => sum + stretch.durationSeconds, 0),
       query.length,
     );
-    const previousLogs = await priorLogsByExercise({
-      userId: currentUser(req).id,
-      muscleId: muscle.id,
-      goal: query.goal,
-      experience: query.experience,
-    });
+    const previousLogs =
+      muscle.id === builtIn?.slug
+        ? new Map()
+        : await priorLogsByExercise({
+            userId: currentUser(req).id,
+            muscleId: muscle.id,
+            goal: query.goal,
+            experience: query.experience,
+          });
 
     res.json({
       data: {
@@ -514,18 +562,47 @@ workoutsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const body = createWorkoutSchema.parse(req.body);
-    const muscle = await prisma.muscleGroup.findUnique({
+    let muscle = await prisma.muscleGroup.findUnique({
       where: { slug: body.muscle },
     });
     if (!muscle) {
-      throw new HttpError(404, 'NOT_FOUND', 'Muscle group not found.');
+      const builtIn = muscleGroups.find((item) => item.slug === body.muscle);
+      if (!builtIn) {
+        throw new HttpError(404, 'NOT_FOUND', 'Muscle group not found.');
+      }
+      muscle = await prisma.muscleGroup.upsert({
+        where: { slug: builtIn.slug },
+        update: {
+          name: builtIn.name,
+          anatomicalRegion: builtIn.anatomicalRegion,
+          sortOrder: builtIn.sortOrder,
+        },
+        create: {
+          slug: builtIn.slug,
+          name: builtIn.name,
+          anatomicalRegion: builtIn.anatomicalRegion,
+          sortOrder: builtIn.sortOrder,
+        },
+      });
     }
 
-    const records = await loadRequestedExercises(
-      body.exercises.map((exercise) => exercise.exerciseId),
-    );
+    const requestedIds = body.exercises.map((exercise) => exercise.exerciseId);
+    const records = await loadRequestedExercises(requestedIds);
+    const byRequest = new Map(requestedIds.map((id, index) => [id, records[index]!]));
     const byId = assertEligible(records, muscle.slug, body.equipmentCategories);
-    const warmups = await loadWarmups(muscle.id);
+    let warmups = await loadWarmups(muscle.id);
+    if (warmups.length === 0) {
+      await ensureStoredExercises(
+        prisma,
+        records.map((exercise) => exercise.slug),
+      );
+      warmups = await loadWarmups(muscle.id);
+    }
+    let candidates = await loadPrimaryCandidates(muscle.id);
+    if (candidates.length === 0) {
+      candidates = catalogueCandidates();
+      void ensureCatalogue(prisma);
+    }
     const warmupSeconds = warmups.reduce(
       (sum, stretch) => sum + stretch.durationSeconds,
       0,
@@ -537,7 +614,7 @@ workoutsRouter.post(
         body.experience,
         body.equipmentCategories,
       ),
-      await loadPrimaryCandidates(muscle.id),
+      candidates,
       warmupSeconds,
       body.length,
     );
@@ -569,12 +646,12 @@ workoutsRouter.post(
         },
         exercises: {
           create: body.exercises.map((exercise, index) => ({
-            exerciseId: exercise.exerciseId,
+            exerciseId: byRequest.get(exercise.exerciseId)!.id,
             order: index,
             sets: exercise.sets,
             reps: exercise.reps,
             restSeconds: exercise.restSeconds,
-            reason: exerciseReason(byId.get(exercise.exerciseId)!, muscle.name),
+            reason: exerciseReason(byId.get(byRequest.get(exercise.exerciseId)!.id)!, muscle.name),
           })),
         },
       },
@@ -678,9 +755,9 @@ workoutsRouter.patch(
       );
     }
 
-    const records = await loadRequestedExercises(
-      body.exercises.map((exercise) => exercise.exerciseId),
-    );
+    const requestedIds = body.exercises.map((exercise) => exercise.exerciseId);
+    const records = await loadRequestedExercises(requestedIds);
+    const byRequest = new Map(requestedIds.map((id, index) => [id, records[index]!]));
     const byId = assertEligible(
       records,
       existing.muscle.slug,
@@ -703,13 +780,13 @@ workoutsRouter.patch(
       prisma.workoutExercise.createMany({
         data: body.exercises.map((exercise, index) => ({
           workoutId: existing.id,
-          exerciseId: exercise.exerciseId,
+          exerciseId: byRequest.get(exercise.exerciseId)!.id,
           order: index,
           sets: exercise.sets,
           reps: exercise.reps,
           restSeconds: exercise.restSeconds,
           reason: exerciseReason(
-            byId.get(exercise.exerciseId)!,
+            byId.get(byRequest.get(exercise.exerciseId)!.id)!,
             existing.muscle.name,
           ),
         })),
